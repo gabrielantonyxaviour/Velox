@@ -21,15 +21,11 @@ export async function GET(request: NextRequest) {
     });
 
     const data = await response.json();
-    console.log('[API] Response:', JSON.stringify(data, null, 2));
+    const eventCount = data?.data?.events?.length || 0;
+    console.log('[API] Response event count:', eventCount);
 
-    return NextResponse.json({
-      success: true,
-      eventType,
-      query,
-      data,
-      eventCount: data?.data?.events?.length || 0,
-    });
+    // Return the GraphQL response directly for simpler parsing
+    return NextResponse.json(data);
   } catch (error) {
     console.error('[API] Error:', error);
     return NextResponse.json({
