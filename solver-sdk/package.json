@@ -17,6 +17,7 @@
     "dev": "ts-node-dev -r dotenv/config --respawn src/examples/basic-solver.ts",
     "dev:advanced": "ts-node-dev -r dotenv/config --respawn src/examples/advanced-solver.ts",
     "dev:dutch": "ts-node-dev -r dotenv/config --respawn src/examples/dutch-solver.ts",
+    "master": "ts-node -r dotenv/config src/scripts/master-solver.ts",
     "start": "node -r dotenv/config dist/cli/index.js start",
     "solver": "ts-node -r dotenv/config src/cli/index.ts",
     "solver:start": "ts-node -r dotenv/config src/cli/index.ts start",
@@ -59,6 +60,7 @@
     "graphql-request": "^6.0.0"
   },
   "devDependencies": {
+    "@shinami/clients": "^0.9.8",
     "@types/jest": "^29.0.0",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
