@@ -77,22 +77,50 @@ export class VeloxAptosClient {
       throw new Error('Account not configured');
     }
 
-    const tx = await this.aptos.transaction.build.simple({
-      sender: this.account.accountAddress,
-      data: {
-        function: payload.function as `${string}::${string}::${string}`,
-        typeArguments: payload.typeArguments as [],
-        functionArguments: payload.functionArguments.map((arg) => arg.toString()),
-      },
-    });
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-    const signedTx = await this.aptos.signAndSubmitTransaction({
-      signer: this.account,
-      transaction: tx,
-    });
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Add small delay between retries to allow sequence number to sync
+        if (attempt > 0) {
+          console.log(`[AptosClient] Retry attempt ${attempt + 1}/${maxRetries} after sequence number error...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
 
-    await this.aptos.waitForTransaction({ transactionHash: signedTx.hash });
+        const tx = await this.aptos.transaction.build.simple({
+          sender: this.account.accountAddress,
+          data: {
+            function: payload.function as `${string}::${string}::${string}`,
+            typeArguments: payload.typeArguments as [],
+            functionArguments: payload.functionArguments.map((arg) => arg.toString()),
+          },
+        });
 
-    return signedTx.hash;
+        const signedTx = await this.aptos.signAndSubmitTransaction({
+          signer: this.account,
+          transaction: tx,
+        });
+
+        await this.aptos.waitForTransaction({ transactionHash: signedTx.hash });
+
+        return signedTx.hash;
+      } catch (error) {
+        lastError = error as Error;
+        const errorMessage = (error as Error).message || '';
+
+        // Retry on sequence number errors
+        if (errorMessage.includes('SEQUENCE_NUMBER_TOO_OLD') ||
+            errorMessage.includes('SEQUENCE_NUMBER_TOO_NEW')) {
+          console.warn(`[AptosClient] Sequence number error, will retry: ${errorMessage}`);
+          continue;
+        }
+
+        // Don't retry on other errors
+        throw error;
+      }
+    }
+
+    throw lastError || new Error('Transaction failed after retries');
   }
 }

@@ -3,11 +3,15 @@
 #[test_only]
 module velox::twap_tests {
     use std::signer;
+    use std::string;
     use aptos_framework::account;
     use aptos_framework::timestamp;
+    use aptos_framework::coin;
+    use aptos_framework::aptos_coin::AptosCoin;
     use velox::test_tokens;
     use velox::submission;
     use velox::settlement;
+    use velox::solver_registry;
     use velox::types;
 
     // ============ Test Setup ============
@@ -23,6 +27,19 @@ module velox::twap_tests {
         test_tokens::initialize(admin);
         submission::initialize(admin);
         settlement::initialize(admin, signer::address_of(admin));
+        solver_registry::initialize(admin);
+
+        // Setup AptosCoin for staking
+        let (burn_cap, mint_cap) = aptos_framework::aptos_coin::initialize_for_test(aptos_framework);
+        coin::register<AptosCoin>(solver);
+        coin::register<AptosCoin>(admin);
+        let coins = coin::mint<AptosCoin>(1000_000_000, &mint_cap); // 10 APT
+        coin::deposit(signer::address_of(solver), coins);
+        coin::destroy_mint_cap(mint_cap);
+        coin::destroy_burn_cap(burn_cap);
+
+        // Register solver with stake
+        solver_registry::register_and_stake(solver, signer::address_of(admin), string::utf8(b"test_solver"), 100_000_000);
 
         test_tokens::mint_token_a(admin, signer::address_of(user), 10000_0000_0000);
         test_tokens::mint_token_b(admin, signer::address_of(solver), 10000_0000_0000);
@@ -238,9 +255,10 @@ module velox::twap_tests {
         assert!(types::get_chunks_executed(&record) == 1, 1);
     }
 
+    // NOTE: Slippage protection for TWAP is disabled until price oracle integration
+    // The old test expected error 12 (EMIN_AMOUNT_NOT_MET) but now we just check output > 0
     #[test(aptos_framework = @0x1, admin = @velox, user = @0x123, solver = @0x456)]
-    #[expected_failure(abort_code = 12, location = velox::settlement)]
-    fun test_twap_slippage_exceeded_fails(
+    fun test_twap_any_positive_output_accepted(
         aptos_framework: &signer, admin: &signer, user: &signer, solver: &signer
     ) {
         setup(aptos_framework, admin, user, solver);
@@ -248,34 +266,32 @@ module velox::twap_tests {
         let token_a = test_tokens::get_token_a_address(admin_addr);
         let token_b = test_tokens::get_token_b_address(admin_addr);
 
-        // max_slippage = 100 bps = 1%
+        // max_slippage stored but not enforced until oracle integration
         submission::submit_twap(user, admin_addr, token_a, token_b,
             100_0000_0000, 5, 60, 100, timestamp::now_seconds());
 
-        // Chunk = 20, min_output with 1% slippage = 19.8
-        // Providing 19 should fail (below min)
-        settlement::fill_twap_chunk(solver, admin_addr, admin_addr, 0, 19_0000_0000);
-    }
-
-    #[test(aptos_framework = @0x1, admin = @velox, user = @0x123, solver = @0x456)]
-    fun test_twap_max_slippage_100_percent(
-        aptos_framework: &signer, admin: &signer, user: &signer, solver: &signer
-    ) {
-        setup(aptos_framework, admin, user, solver);
-        let admin_addr = signer::address_of(admin);
-        let token_a = test_tokens::get_token_a_address(admin_addr);
-        let token_b = test_tokens::get_token_b_address(admin_addr);
-
-        // max_slippage = 10000 bps = 100% (any output accepted)
-        submission::submit_twap(user, admin_addr, token_a, token_b,
-            100_0000_0000, 5, 60, 10000, timestamp::now_seconds());
-
-        // Even 0 output should work with 100% slippage... but min_output = 0
-        // Actually with 100% slippage: min = chunk * (10000 - 10000) / 10000 = 0
+        // Any positive output is accepted (slippage check disabled)
         settlement::fill_twap_chunk(solver, admin_addr, admin_addr, 0, 1);
 
         let record = submission::borrow_intent(admin_addr, 0);
         assert!(types::get_chunks_executed(&record) == 1, 1);
+    }
+
+    #[test(aptos_framework = @0x1, admin = @velox, user = @0x123, solver = @0x456)]
+    #[expected_failure(abort_code = 12, location = velox::settlement)]
+    fun test_twap_zero_output_fails(
+        aptos_framework: &signer, admin: &signer, user: &signer, solver: &signer
+    ) {
+        setup(aptos_framework, admin, user, solver);
+        let admin_addr = signer::address_of(admin);
+        let token_a = test_tokens::get_token_a_address(admin_addr);
+        let token_b = test_tokens::get_token_b_address(admin_addr);
+
+        submission::submit_twap(user, admin_addr, token_a, token_b,
+            100_0000_0000, 5, 60, 100, timestamp::now_seconds());
+
+        // Zero output should fail
+        settlement::fill_twap_chunk(solver, admin_addr, admin_addr, 0, 0);
     }
 
     // ============ Cancellation Tests ============

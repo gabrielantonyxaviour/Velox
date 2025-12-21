@@ -12,10 +12,10 @@ compiled_package_info:
     velox: 94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470
     vm: "0000000000000000000000000000000000000000000000000000000000000000"
     vm_reserved: "0000000000000000000000000000000000000000000000000000000000000000"
-  source_digest: A905254D68A8560A40F5E22B98E18D0F24EB23386591F7392BD8AF6228B53F5D
+  source_digest: 857F36D4A2847548A6F957D302D176E6C5BDDB7B4B87E4297E35FAFF221201C0
   build_flags:
-    dev_mode: true
-    test_mode: true
+    dev_mode: false
+    test_mode: false
     override_std: ~
     generate_docs: false
     generate_abis: false
