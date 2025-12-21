@@ -481,7 +481,7 @@ export class VeloxSolver extends EventEmitter {
       return;
     }
 
-    const solverAddress = this.client.getAccountAddress();
+    const solverAddress = this.registeredSolverAddress || this.client.getAccountAddress();
     if (!solverAddress) {
       console.warn('[VeloxSolver] No solver address available for recording transaction');
       return;
@@ -729,7 +729,7 @@ export class VeloxSolver extends EventEmitter {
   // ============ Solver Stats ============
 
   async getSolverStats(address?: string): Promise<SolverStats> {
-    const solverAddress = address || this.client.getAccountAddress();
+    const solverAddress = address || this.registeredSolverAddress || this.client.getAccountAddress();
     if (!solverAddress) {
       throw new Error('No solver address provided');
     }
