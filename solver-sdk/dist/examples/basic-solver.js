@@ -3,28 +3,62 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const VeloxSolver_1 = require("../VeloxSolver");
 const intent_1 = require("../types/intent");
+const cliStyle_1 = require("../utils/cliStyle");
 async function main() {
     const shinamiNodeKey = process.env.SHINAMI_KEY;
+    const solverPrivateKey = process.env.SOLVER_PRIVATE_KEY;
+    const registeredSolverAddress = process.env.REGISTERED_SOLVER_ADDRESS;
+    // Beautiful startup banner
+    (0, cliStyle_1.printVeloxLogo)();
+    (0, cliStyle_1.printSection)('🚀 VELOX BASIC SOLVER');
+    console.log('');
+    // Validate configuration before proceeding
+    if (!solverPrivateKey) {
+        (0, cliStyle_1.printSection)('❌ CONFIGURATION ERROR');
+        console.log('');
+        console.log('  Missing required environment variable: SOLVER_PRIVATE_KEY');
+        console.log('');
+        console.log('  Required Configuration:');
+        console.log('  ├─ SOLVER_PRIVATE_KEY       (operator wallet private key - REQUIRED)');
+        console.log('  ├─ REGISTERED_SOLVER_ADDRESS (on-chain solver address - OPTIONAL)');
+        console.log('  ├─ RPC_URL                   (defaults to testnet)');
+        console.log('  └─ VELOX_ADDRESS             (defaults to deployed address)');
+        console.log('');
+        console.log('  Setup:');
+        console.log('  1. Copy .env.example to .env:');
+        console.log('     cp .env.example .env');
+        console.log('');
+        console.log('  2. Edit .env and add your configuration:');
+        console.log('     SOLVER_PRIVATE_KEY=0x...');
+        console.log('     REGISTERED_SOLVER_ADDRESS=0x...');
+        console.log('');
+        process.exit(1);
+    }
+    // Display configuration status
+    (0, cliStyle_1.printKeyValue)('⏱️  Polling Interval', '10,000ms (10 seconds)');
+    (0, cliStyle_1.printKeyValue)(`${shinamiNodeKey ? '✅' : '⏭️ '} Shinami Node Service`, shinamiNodeKey ? 'CONFIGURED' : 'DISABLED');
+    (0, cliStyle_1.printKeyValue)(`${registeredSolverAddress ? '✅' : '⏭️ '} Registered Solver Address`, registeredSolverAddress ? 'CONFIGURED' : 'WILL USE OPERATOR ADDRESS');
+    (0, cliStyle_1.printKeyValue)('⏭️  Skip Existing Intents', 'ENABLED');
+    console.log('');
     const solver = new VeloxSolver_1.VeloxSolver({
         rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
         veloxAddress: process.env.VELOX_ADDRESS ||
-            '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
+            '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb',
+        // Private key of the operator wallet (used for signing transactions)
         privateKey: process.env.SOLVER_PRIVATE_KEY,
+        // Address where solver is registered on-chain (can be different from operator)
+        // If not provided, will use the address derived from privateKey
+        registeredSolverAddress: process.env.REGISTERED_SOLVER_ADDRESS,
         pollingInterval: 10000, // 10 seconds to avoid rate limiting
         skipExistingOnStartup: true,
         shinamiNodeKey,
     });
-    console.log('Starting Velox Basic Solver...');
-    if (shinamiNodeKey) {
-        console.log('Shinami: CONFIGURED');
-    }
-    console.log('Listening for pending intents...\n');
     // Handle errors
     solver.on('error', (error) => {
-        console.error('Solver error:', error.message);
+        console.error('\n  ❌ Solver error:', error.message);
     });
-    // Listen for new intents
-    solver.startIntentStream(async (record) => {
+    // Listen for new intents - validates registration before starting
+    await solver.startIntentStream(async (record) => {
         console.log(`\n=== New Intent Detected ===`);
         console.log(`ID: ${record.id}`);
         console.log(`Type: ${record.intent.type}`);
@@ -58,11 +92,18 @@ async function main() {
     });
     // Handle graceful shutdown
     process.on('SIGINT', () => {
-        console.log('\nShutting down solver...');
+        console.log('\n');
+        console.log('╔' + '═'.repeat(78) + '╗');
+        console.log('║' + '  ⏹️  Shutting down Velox solver...'.padEnd(78) + '║');
+        console.log('╚' + '═'.repeat(78) + '╝');
         solver.stopIntentStream();
         process.exit(0);
     });
     process.on('SIGTERM', () => {
+        console.log('\n');
+        console.log('╔' + '═'.repeat(78) + '╗');
+        console.log('║' + '  ⏹️  Terminating Velox solver...'.padEnd(78) + '║');
+        console.log('╚' + '═'.repeat(78) + '╝');
         solver.stopIntentStream();
         process.exit(0);
     });

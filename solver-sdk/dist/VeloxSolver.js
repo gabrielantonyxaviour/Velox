@@ -6,6 +6,7 @@ const AptosClient_1 = require("./client/AptosClient");
 const GraphQLClient_1 = require("./client/GraphQLClient");
 const intent_1 = require("./types/intent");
 const coingecko_1 = require("./utils/coingecko");
+const cliStyle_1 = require("./utils/cliStyle");
 class VeloxSolver extends events_1.EventEmitter {
     client;
     graphql;
@@ -14,6 +15,8 @@ class VeloxSolver extends events_1.EventEmitter {
     isRunning = false;
     pollingInterval;
     skipExistingOnStartup;
+    registeredSolverAddress;
+    veloxApiUrl;
     constructor(config) {
         super();
         this.client = new AptosClient_1.VeloxAptosClient({
@@ -25,11 +28,16 @@ class VeloxSolver extends events_1.EventEmitter {
         this.feeConfigAddr = config.feeConfigAddr || config.veloxAddress;
         this.pollingInterval = config.pollingInterval || 1000;
         this.skipExistingOnStartup = config.skipExistingOnStartup ?? false;
+        this.registeredSolverAddress = config.registeredSolverAddress;
         if (config.graphqlUrl) {
             this.graphql = new GraphQLClient_1.VeloxGraphQLClient({ url: config.graphqlUrl });
         }
         if (config.shinamiNodeKey) {
             console.log('[VeloxSolver] Shinami Node Service enabled for enhanced reliability');
+        }
+        this.veloxApiUrl = config.veloxApiUrl;
+        if (this.veloxApiUrl) {
+            console.log(`[VeloxSolver] Velox API configured: ${this.veloxApiUrl}`);
         }
     }
     // ============ Intent Discovery ============
@@ -76,12 +84,125 @@ class VeloxSolver extends events_1.EventEmitter {
             return null;
         }
     }
-    startIntentStream(callback) {
+    async startIntentStream(callback) {
+        // Validate solver registration before starting
+        await this.validateSolverRegistration();
         this.isRunning = true;
         this.pollIntents(callback);
     }
     stopIntentStream() {
         this.isRunning = false;
+    }
+    // ============ Solver Registration Validation ============
+    /**
+     * Validate that solver is registered with stake before starting
+     * Fetches and displays solver metadata
+     */
+    async validateSolverRegistration() {
+        if (!this.client.hasAccount()) {
+            throw new Error('❌ SOLVER ACCOUNT INITIALIZATION FAILED\n\n' +
+                'Could not initialize account from SOLVER_PRIVATE_KEY.\n' +
+                'This usually means:\n' +
+                '  1. SOLVER_PRIVATE_KEY is not set in .env\n' +
+                '  2. SOLVER_PRIVATE_KEY is in an invalid format (should be 0x...)\n' +
+                '  3. Private key is malformed or corrupted\n\n' +
+                'Please verify your .env configuration and try again.');
+        }
+        const operatorAddress = this.client.getAccountAddress();
+        if (!operatorAddress) {
+            throw new Error('❌ OPERATOR ADDRESS DERIVATION FAILED\n\n' +
+                'Could not derive operator address from private key.\n' +
+                'Please check that your SOLVER_PRIVATE_KEY is valid.');
+        }
+        // Use registered solver address if provided, otherwise use operator address
+        const solverAddress = this.registeredSolverAddress || operatorAddress;
+        (0, cliStyle_1.printVeloxLogo)();
+        (0, cliStyle_1.printSection)('🔐 SOLVER REGISTRATION VALIDATION');
+        await (0, cliStyle_1.printLoadingAnimation)('📋 Validating solver credentials', 1000);
+        (0, cliStyle_1.printInfo)(`Registered Solver Address: ${solverAddress}`);
+        if (this.registeredSolverAddress) {
+            (0, cliStyle_1.printInfo)(`Operator Address: ${operatorAddress}`);
+        }
+        try {
+            const stats = await this.getSolverStats(solverAddress);
+            if (!stats.isRegistered) {
+                (0, cliStyle_1.printError)('Solver is NOT registered with Velox network');
+                (0, cliStyle_1.printSection)('❌ REGISTRATION REQUIRED');
+                console.log('');
+                console.log('  Your solver must be registered before starting.');
+                console.log('');
+                (0, cliStyle_1.printInfo)('Run this command to register with stake:');
+                console.log('');
+                console.log('  \x1b[1mmovement move run \\');
+                console.log('    --function-id <VELOX>::solver_registry::register_and_stake \\');
+                console.log('    --args \\');
+                console.log('      string:"<metadata_uri>" \\');
+                console.log('      u64:<stake_amount>\x1b[0m');
+                console.log('');
+                (0, cliStyle_1.printInfo)('Example (with 1 MOVE stake):');
+                console.log('');
+                console.log('  \x1b[1mmovement move run \\');
+                console.log('    --function-id 0x123...::solver_registry::register_and_stake \\');
+                console.log('    --args \\');
+                console.log('      string:"https://example.com/solver" \\');
+                console.log('      u64:1000000000\x1b[0m');
+                console.log('');
+                throw new Error('Solver not registered');
+            }
+            if (stats.stake === 0n) {
+                (0, cliStyle_1.printWarning)('Solver has no stake');
+                (0, cliStyle_1.printSection)('⚠️  NO STAKE FOUND');
+                console.log('');
+                console.log('  Your solver is registered but has no active stake.');
+                console.log('');
+                (0, cliStyle_1.printInfo)('Add stake using:');
+                console.log('');
+                console.log('  \x1b[1mmovement move run \\');
+                console.log('    --function-id <VELOX>::solver_registry::add_stake \\');
+                console.log('    --args \\');
+                console.log('      address:<registry_address> \\');
+                console.log('      u64:<stake_amount>\x1b[0m');
+                console.log('');
+                throw new Error('Solver has no stake');
+            }
+            await (0, cliStyle_1.printLoadingAnimation)('📊 Loading solver profile', 800);
+            (0, cliStyle_1.printSuccess)('Solver validation PASSED');
+            (0, cliStyle_1.printSection)('✅ SOLVER READY TO START');
+            // Profile metrics
+            (0, cliStyle_1.printMetricBox)('📊 SOLVER PROFILE', [
+                { label: 'Address', value: stats.address.slice(0, 12) + '...' + stats.address.slice(-8) },
+                { label: 'Status', value: stats.isActive ? '🟢 ACTIVE' : '🔴 INACTIVE' },
+                { label: 'Registered', value: stats.isRegistered ? '✓ Yes' : '✗ No' },
+            ]);
+            // Stake metrics
+            (0, cliStyle_1.printMetricBox)('💰 STAKE INFORMATION', [
+                { label: 'Total Stake (Octas)', value: stats.stake.toString() },
+                { label: 'Pending Unstake', value: stats.pendingUnstake.toString() },
+            ]);
+            // Performance metrics
+            (0, cliStyle_1.printMetricBox)('🎯 PERFORMANCE METRICS', [
+                { label: 'Reputation Score', value: `${stats.reputationScore}/10000` },
+                { label: 'Successful Fills', value: stats.successfulFills.toString() },
+                { label: 'Failed Fills', value: stats.failedFills.toString() },
+                { label: 'Total Volume (Octas)', value: stats.totalVolume.toString() },
+            ]);
+            // Activity metrics
+            const registeredDate = new Date(stats.registeredAt * 1000).toISOString();
+            const lastActiveDate = stats.lastActive > 0 ? new Date(stats.lastActive * 1000).toISOString() : 'Never';
+            (0, cliStyle_1.printMetricBox)('📅 ACTIVITY LOG', [
+                { label: 'Registered At', value: registeredDate },
+                { label: 'Last Active', value: lastActiveDate },
+            ]);
+            await (0, cliStyle_1.printLoadingAnimation)('🚀 Initializing intent stream', 1200);
+            (0, cliStyle_1.printSuccess)('Solver initialized and ready!');
+            console.log('');
+        }
+        catch (error) {
+            if (error instanceof Error && (error.message.includes('not registered') || error.message.includes('no stake'))) {
+                throw error;
+            }
+            throw new Error(`Failed to validate solver registration: ${error.message}`);
+        }
     }
     // ============ Fill Functions (NEW) ============
     /**
@@ -111,6 +232,8 @@ class VeloxSolver extends events_1.EventEmitter {
                 ],
             });
             console.log(`fill_swap transaction successful: ${txHash}`);
+            // Record taker transaction in Velox API
+            await this.recordTakerTransaction(params.intentId, txHash, params.fillInput);
             return {
                 success: true,
                 txHash,
@@ -150,6 +273,8 @@ class VeloxSolver extends events_1.EventEmitter {
                 ],
             });
             console.log(`fill_limit_order transaction successful: ${txHash}`);
+            // Record taker transaction in Velox API
+            await this.recordTakerTransaction(params.intentId, txHash, params.fillInput);
             return {
                 success: true,
                 txHash,
@@ -187,6 +312,8 @@ class VeloxSolver extends events_1.EventEmitter {
                 ],
             });
             console.log(`fill_twap_chunk transaction successful: ${txHash}`);
+            // Record taker transaction in Velox API
+            await this.recordTakerTransaction(params.intentId, txHash, params.outputAmount);
             return { success: true, txHash, outputAmount: params.outputAmount };
         }
         catch (error) {
@@ -219,11 +346,51 @@ class VeloxSolver extends events_1.EventEmitter {
                 ],
             });
             console.log(`fill_dca_period transaction successful: ${txHash}`);
+            // Record taker transaction in Velox API
+            await this.recordTakerTransaction(params.intentId, txHash, params.outputAmount);
             return { success: true, txHash, outputAmount: params.outputAmount };
         }
         catch (error) {
             console.error(`fill_dca_period failed:`, error);
             return { success: false, error: error.message };
+        }
+    }
+    /**
+     * Record a taker transaction in the Velox API (Supabase)
+     * Called automatically after successful fills if veloxApiUrl is configured
+     */
+    async recordTakerTransaction(intentId, txHash, fillAmount) {
+        if (!this.veloxApiUrl) {
+            console.log('[VeloxSolver] No Velox API URL configured, skipping transaction recording');
+            return;
+        }
+        const solverAddress = this.client.getAccountAddress();
+        if (!solverAddress) {
+            console.warn('[VeloxSolver] No solver address available for recording transaction');
+            return;
+        }
+        try {
+            const response = await fetch(`${this.veloxApiUrl}/api/transactions/taker`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    intent_id: intentId.toString(),
+                    taker_tx_hash: txHash,
+                    solver_address: solverAddress,
+                    fill_amount: fillAmount?.toString(),
+                }),
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.warn(`[VeloxSolver] Failed to record taker tx: ${response.status}`, errorData);
+                return;
+            }
+            console.log(`[VeloxSolver] Taker transaction recorded: ${txHash}`);
+        }
+        catch (error) {
+            console.warn('[VeloxSolver] Error recording taker transaction:', error.message);
         }
     }
     // ============ View Functions ============

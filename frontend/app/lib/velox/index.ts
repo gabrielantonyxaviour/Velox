@@ -27,9 +27,10 @@ export {
   getUserIntents,
   getTotalIntents,
   getTokenBalance,
-  fetchIntentEvents,
-  getIntentEventData,
-  clearEventCache,
+  fetchIntentTransactions,
+  getIntentTransactionData,
+  clearTransactionCache,
+  storeMakerTransaction,
 } from './queries';
 
 // Auction Storage

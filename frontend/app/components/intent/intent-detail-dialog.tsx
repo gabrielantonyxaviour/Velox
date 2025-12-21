@@ -371,22 +371,22 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
             )}
           </div>
 
-          {/* Transaction Links */}
-          {(intent.submitTxHash || (intent.fills.length > 0 && intent.fills.some(f => f.txHash))) && (
+          {/* Transaction Links - Always show for filled intents */}
+          {(isFilled || intent.fills.length > 0 || intent.submitTxHash) && (
             <>
               <Separator />
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground font-medium">Transactions</span>
-                  {intent.fills.length > 1 && (
+                  {intent.fills.length > 0 && (
                     <span className="text-xs text-muted-foreground">
-                      {intent.fills.filter(f => f.txHash).length} fill{intent.fills.filter(f => f.txHash).length !== 1 ? 's' : ''}
+                      {intent.fills.length} fill{intent.fills.length !== 1 ? 's' : ''}
                     </span>
                   )}
                 </div>
 
                 {/* Maker TX - Intent Submission */}
-                {intent.submitTxHash && (
+                {intent.submitTxHash ? (
                   <a
                     href={getExplorerUrl(intent.submitTxHash)}
                     target="_blank"
@@ -399,40 +399,54 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
                       <ExternalLink className="h-3 w-3" />
                     </span>
                   </a>
+                ) : (
+                  <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+                    <span className="text-xs text-muted-foreground">Maker TX (Submit)</span>
+                    <span className="text-xs text-muted-foreground/60 italic">Not recorded</span>
+                  </div>
                 )}
 
                 {/* Taker TX - Fill Transactions */}
-                {intent.fills.filter(f => f.txHash).map((fill, idx) => {
-                  const fillsWithTx = intent.fills.filter(f => f.txHash);
-                  const isMultipleFills = fillsWithTx.length > 1;
-                  const fillLabel = isMultipleFills
-                    ? `Taker TX #${idx + 1}`
-                    : 'Taker TX (Fill)';
-                  const fillAmount = fill.inputAmount
-                    ? `${formatAmount(fill.inputAmount, inputDecimals)} ${getTokenSymbol(intentData.inputToken)}`
-                    : null;
+                {intent.fills.length > 0 && intent.fills.some(f => f.txHash) ? (
+                  intent.fills.filter(f => f.txHash).map((fill, idx) => {
+                    const fillsWithTx = intent.fills.filter(f => f.txHash);
+                    const isMultipleFills = fillsWithTx.length > 1;
+                    const fillLabel = isMultipleFills
+                      ? `Taker TX #${idx + 1}`
+                      : 'Taker TX (Fill)';
+                    const fillAmount = fill.inputAmount
+                      ? `${formatAmount(fill.inputAmount, inputDecimals)} ${getTokenSymbol(intentData.inputToken)}`
+                      : null;
 
-                  return (
-                    <a
-                      key={fill.txHash || `fill-${idx}`}
-                      href={getExplorerUrl(fill.txHash!)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-between p-2 rounded bg-muted/30 hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-xs text-muted-foreground">{fillLabel}</span>
-                        {isMultipleFills && fillAmount && (
-                          <span className="text-[10px] text-muted-foreground/70">{fillAmount}</span>
-                        )}
-                      </div>
-                      <span className="flex items-center gap-1 text-primary text-xs font-mono">
-                        {fill.txHash!.slice(0, 10)}...{fill.txHash!.slice(-6)}
-                        <ExternalLink className="h-3 w-3" />
-                      </span>
-                    </a>
-                  );
-                })}
+                    return (
+                      <a
+                        key={fill.txHash || `fill-${idx}`}
+                        href={getExplorerUrl(fill.txHash!)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-2 rounded bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-xs text-muted-foreground">{fillLabel}</span>
+                          {isMultipleFills && fillAmount && (
+                            <span className="text-[10px] text-muted-foreground/70">{fillAmount}</span>
+                          )}
+                        </div>
+                        <span className="flex items-center gap-1 text-primary text-xs font-mono">
+                          {fill.txHash!.slice(0, 10)}...{fill.txHash!.slice(-6)}
+                          <ExternalLink className="h-3 w-3" />
+                        </span>
+                      </a>
+                    );
+                  })
+                ) : isFilled || intent.fills.length > 0 ? (
+                  <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+                    <span className="text-xs text-muted-foreground">
+                      Taker TX {intent.fills.length > 1 ? `(${intent.fills.length} fills)` : '(Fill)'}
+                    </span>
+                    <span className="text-xs text-muted-foreground/60 italic">Not recorded</span>
+                  </div>
+                ) : null}
               </div>
             </>
           )}

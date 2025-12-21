@@ -23,7 +23,8 @@ async function main() {
     console.log('  ├─ SOLVER_PRIVATE_KEY       (operator wallet private key - REQUIRED)');
     console.log('  ├─ REGISTERED_SOLVER_ADDRESS (on-chain solver address - OPTIONAL)');
     console.log('  ├─ RPC_URL                   (defaults to testnet)');
-    console.log('  └─ VELOX_ADDRESS             (defaults to deployed address)');
+    console.log('  ├─ VELOX_ADDRESS             (defaults to deployed address)');
+    console.log('  └─ VELOX_API_URL             (for recording taker txs - OPTIONAL)');
     console.log('');
     console.log('  Setup:');
     console.log('  1. Copy .env.example to .env:');
@@ -32,14 +33,18 @@ async function main() {
     console.log('  2. Edit .env and add your configuration:');
     console.log('     SOLVER_PRIVATE_KEY=0x...');
     console.log('     REGISTERED_SOLVER_ADDRESS=0x...');
+    console.log('     VELOX_API_URL=https://your-velox-frontend.vercel.app');
     console.log('');
     process.exit(1);
   }
 
   // Display configuration status
+  const veloxApiUrl = process.env.VELOX_API_URL;
+
   printKeyValue('⏱️  Polling Interval', '10,000ms (10 seconds)');
   printKeyValue(`${shinamiNodeKey ? '✅' : '⏭️ '} Shinami Node Service`, shinamiNodeKey ? 'CONFIGURED' : 'DISABLED');
   printKeyValue(`${registeredSolverAddress ? '✅' : '⏭️ '} Registered Solver Address`, registeredSolverAddress ? 'CONFIGURED' : 'WILL USE OPERATOR ADDRESS');
+  printKeyValue(`${veloxApiUrl ? '✅' : '⏭️ '} Velox API URL`, veloxApiUrl || 'NOT CONFIGURED (taker txs not recorded)');
   printKeyValue('⏭️  Skip Existing Intents', 'ENABLED');
   console.log('');
 
@@ -56,6 +61,9 @@ async function main() {
     pollingInterval: 10000, // 10 seconds to avoid rate limiting
     skipExistingOnStartup: true,
     shinamiNodeKey,
+    // Velox API URL for recording taker transactions (optional)
+    // Set to your deployed frontend URL (e.g., https://velox.vercel.app)
+    veloxApiUrl,
   });
 
   // Handle errors

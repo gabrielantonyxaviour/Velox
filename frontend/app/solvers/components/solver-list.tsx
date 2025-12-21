@@ -91,7 +91,7 @@ function SolverRow({ solver }: { solver: SolverListItem }) {
           <div className="flex items-center gap-2 mt-2">
             <Progress value={Math.min(solver.reputationScore / 100, 100)} className="h-2 w-24" />
             <span className="text-xs text-muted-foreground font-semibold">
-              {Math.min((solver.reputationScore / 100).toFixed(0), 100)}%
+              {Math.min(Math.floor(solver.reputationScore / 100), 100)}%
             </span>
           </div>
         </div>

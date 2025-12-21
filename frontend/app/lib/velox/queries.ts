@@ -1,4 +1,4 @@
-import { aptos, VELOX_ADDRESS, MOVEMENT_CONFIGS, CURRENT_NETWORK } from '../aptos';
+import { aptos, VELOX_ADDRESS } from '../aptos';
 import {
   IntentRecord,
   IntentStatus,
@@ -12,6 +12,7 @@ import {
   parseIntentType,
   parseAuctionType,
 } from './types';
+import { IntentTransactions, VeloxMakerTransaction, VeloxTakerTransaction } from '@/types/supabase';
 
 // Helper to safely get string from unknown
 const safeGetString = (obj: Record<string, unknown> | undefined, key: string): string => {
@@ -318,181 +319,88 @@ export async function getTokenBalance(
   }
 }
 
-// ============ Event Caching ============
+// ============ Transaction Fetching (Supabase) ============
 
-interface FillEventData {
-  txHash: string;
-  fillNumber: number;
-  solver: string;
-  inputAmount: bigint;
-  outputAmount: bigint;
-}
-
-interface IntentEventData {
-  submissionTxHash?: string;
-  fillTxHashes: FillEventData[];
-}
-
-const eventCache: Map<string, IntentEventData> = new Map();
-
-const RPC_URL = MOVEMENT_CONFIGS[CURRENT_NETWORK].fullnode;
-const INDEXER_URL = 'https://indexer.testnet.movementnetwork.xyz/v1/graphql';
-
-interface TransactionEvent {
-  type: string;
-  data: Record<string, unknown>;
-}
-
-interface Transaction {
-  version: string;
-  hash: string;
-  events: TransactionEvent[];
-}
+// Cache for intent transactions (from Supabase)
+const transactionCache: Map<string, {
+  makerTx?: VeloxMakerTransaction;
+  takerTxs: VeloxTakerTransaction[];
+}> = new Map();
 
 /**
- * Parse events from a list of transactions
+ * Fetch transactions for given intent IDs from Supabase
  */
-function parseEventsFromTransactions(transactions: Transaction[], intentIds: bigint[]): void {
-  for (const tx of transactions) {
-    if (!tx.events) continue;
-
-    for (const event of tx.events) {
-      // Check for IntentCreated events
-      if (event.type.includes('::submission::IntentCreated')) {
-        const data = event.data;
-        const intentId = String(data.intent_id);
-
-        if (intentIds.some(id => id.toString() === intentId)) {
-          const existing = eventCache.get(intentId) || { fillTxHashes: [] };
-          existing.submissionTxHash = tx.hash || tx.version;
-          eventCache.set(intentId, existing);
-        }
-      }
-
-      // Check for IntentFilled events - this captures each fill tx
-      if (event.type.includes('::settlement::IntentFilled')) {
-        const data = event.data;
-        const intentId = String(data.intent_id);
-
-        if (intentIds.some(id => id.toString() === intentId)) {
-          const existing = eventCache.get(intentId) || { fillTxHashes: [] };
-          const txHash = tx.hash || tx.version;
-          const fillNumber = Number(data.fill_number || 1);
-
-          // Avoid duplicate entries
-          if (!existing.fillTxHashes.some(f => f.txHash === txHash)) {
-            existing.fillTxHashes.push({
-              txHash,
-              fillNumber,
-              solver: String(data.solver || ''),
-              inputAmount: BigInt(String(data.input_amount || '0')),
-              outputAmount: BigInt(String(data.output_amount || '0')),
-            });
-          }
-          eventCache.set(intentId, existing);
-        }
-      }
-    }
-  }
-}
-
-/**
- * Fetch IntentCreated and IntentFilled events for given intent IDs
- * Uses the API route to proxy GraphQL requests to the Movement indexer
- */
-export async function fetchIntentEvents(intentIds: bigint[], userAddress?: string): Promise<void> {
+export async function fetchIntentTransactions(intentIds: bigint[]): Promise<void> {
   if (intentIds.length === 0) return;
 
   try {
-    // Use API route to proxy GraphQL requests (avoids CORS and other browser issues)
-    const fetchWithTimeout = async (eventType: string) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
-      try {
-        const res = await fetch(`/api/indexer?eventType=${eventType}`, {
-          method: 'GET',
-          signal: controller.signal,
+    const idsParam = intentIds.map(id => id.toString()).join(',');
+    const res = await fetch(`/api/transactions?intent_ids=${idsParam}`);
+    const result = await res.json();
+
+    if (result.data) {
+      for (const tx of result.data as IntentTransactions[]) {
+        transactionCache.set(tx.intentId, {
+          makerTx: tx.makerTx,
+          takerTxs: tx.takerTxs,
         });
-        // API now returns GraphQL response directly: { data: { events: [...] } }
-        return await res.json();
-      } catch {
-        return { data: { events: [] } };
-      } finally {
-        clearTimeout(timeout);
-      }
-    };
-
-    console.log('[Velox] Fetching events via API route...');
-
-    const [createdRes, filledRes] = await Promise.all([
-      fetchWithTimeout('IntentCreated'),
-      fetchWithTimeout('IntentFilled'),
-    ]);
-
-    console.log('[Velox] Raw responses:', { createdRes, filledRes });
-    console.log('[Velox] Event fetch results:', {
-      createdCount: createdRes?.data?.events?.length || 0,
-      filledCount: filledRes?.data?.events?.length || 0,
-      intentIds: intentIds.map(id => id.toString()),
-    });
-
-    // Process IntentCreated events
-    const createdEvents = createdRes?.data?.events || [];
-    for (const event of createdEvents) {
-      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-      const intentId = String(data.intent_id);
-
-      if (intentIds.some(id => id.toString() === intentId)) {
-        const existing = eventCache.get(intentId) || { fillTxHashes: [] };
-        existing.submissionTxHash = event.transaction_version?.toString() || '';
-        eventCache.set(intentId, existing);
       }
     }
 
-    // Process IntentFilled events
-    const filledEvents = filledRes?.data?.events || [];
-    for (const event of filledEvents) {
-      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-      const intentId = String(data.intent_id);
-
-      if (intentIds.some(id => id.toString() === intentId)) {
-        const existing = eventCache.get(intentId) || { fillTxHashes: [] };
-        const txVersion = event.transaction_version?.toString() || '';
-        const fillNumber = Number(data.fill_number || 1);
-
-        // Avoid duplicate entries
-        if (txVersion && !existing.fillTxHashes.some(f => f.txHash === txVersion)) {
-          existing.fillTxHashes.push({
-            txHash: txVersion,
-            fillNumber,
-            solver: String(data.solver || ''),
-            inputAmount: BigInt(String(data.input_amount || '0')),
-            outputAmount: BigInt(String(data.output_amount || '0')),
-          });
-          console.log('[Velox] Cached fill event for intent', intentId, ':', txVersion);
-        }
-        eventCache.set(intentId, existing);
-      }
-    }
-
-    console.log('[Velox] Event cache after processing:',
-      Array.from(eventCache.entries()).map(([k, v]) => ({
-        intentId: k,
-        submitTx: v.submissionTxHash?.slice(0, 10),
-        fills: v.fillTxHashes.length
-      }))
-    );
+    console.log('[Velox] Transaction cache updated:', transactionCache.size, 'intents');
   } catch (error) {
-    console.warn('[Velox] Event fetching from indexer failed:', error);
+    console.warn('[Velox] Failed to fetch transactions from Supabase:', error);
   }
 }
 
-export function getIntentEventData(intentId: bigint): IntentEventData | undefined {
-  return eventCache.get(intentId.toString());
+/**
+ * Store maker transaction when intent is created
+ */
+export async function storeMakerTransaction(
+  intentId: string,
+  makerTxHash: string,
+  userAddress: string
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/transactions/maker', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intent_id: intentId,
+        maker_tx_hash: makerTxHash,
+        user_address: userAddress,
+      }),
+    });
+    const result = await res.json();
+    return result.success === true;
+  } catch (error) {
+    console.error('[Velox] Failed to store maker transaction:', error);
+    return false;
+  }
 }
 
-export function clearEventCache(): void {
-  eventCache.clear();
+/**
+ * Get cached transaction data for an intent
+ */
+export function getIntentTransactionData(intentId: bigint): {
+  makerTxHash?: string;
+  takerTxHashes: { txHash: string; solver: string; fillAmount?: string }[];
+} | undefined {
+  const cached = transactionCache.get(intentId.toString());
+  if (!cached) return undefined;
+
+  return {
+    makerTxHash: cached.makerTx?.maker_tx_hash,
+    takerTxHashes: cached.takerTxs.map(t => ({
+      txHash: t.taker_tx_hash,
+      solver: t.solver_address,
+      fillAmount: t.fill_amount,
+    })),
+  };
+}
+
+export function clearTransactionCache(): void {
+  transactionCache.clear();
 }
 
 // ============ Auction Query Functions ============

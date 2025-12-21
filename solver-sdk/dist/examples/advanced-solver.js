@@ -4,6 +4,7 @@ const VeloxSolver_1 = require("../VeloxSolver");
 const ArbitrageStrategy_1 = require("../strategies/ArbitrageStrategy");
 const MarketMakerStrategy_1 = require("../strategies/MarketMakerStrategy");
 const gas_1 = require("../utils/gas");
+const cliStyle_1 = require("../utils/cliStyle");
 class AdvancedSolver {
     solver;
     strategies;
@@ -29,7 +30,8 @@ class AdvancedSolver {
         this.solver.on('error', (error) => {
             console.error('Solver error:', error.message);
         });
-        this.solver.startIntentStream((intent) => this.handleIntent(intent));
+        // Validates registration before starting
+        await this.solver.startIntentStream((intent) => this.handleIntent(intent));
     }
     stop() {
         this.solver.stopIntentStream();
@@ -101,17 +103,30 @@ class AdvancedSolver {
     }
 }
 async function main() {
+    // Beautiful startup banner
+    (0, cliStyle_1.printVeloxLogo)();
+    (0, cliStyle_1.printSection)('⚡ VELOX ADVANCED SOLVER');
+    const minProfitBps = parseInt(process.env.MIN_PROFIT_BPS || '10');
+    const maxConcurrent = parseInt(process.env.MAX_CONCURRENT || '5');
+    console.log('');
+    (0, cliStyle_1.printKeyValue)('🎯 Min Profit Threshold', minProfitBps.toString() + ' bps');
+    (0, cliStyle_1.printKeyValue)('🔄 Max Concurrent Intents', maxConcurrent.toString());
+    (0, cliStyle_1.printKeyValue)('📊 Strategy Types', 'Arbitrage, Market Making');
+    console.log('');
     const solver = new AdvancedSolver({
         rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
         veloxAddress: process.env.VELOX_ADDRESS ||
-            '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
+            '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb',
         privateKey: process.env.SOLVER_PRIVATE_KEY || '',
-        minProfitBps: parseInt(process.env.MIN_PROFIT_BPS || '10'),
-        maxConcurrentIntents: parseInt(process.env.MAX_CONCURRENT || '5'),
+        minProfitBps,
+        maxConcurrentIntents: maxConcurrent,
     });
     await solver.start();
     process.on('SIGINT', () => {
-        console.log('\nShutting down...');
+        console.log('\n');
+        console.log('╔' + '═'.repeat(78) + '╗');
+        console.log('║' + '  ⏹️  Shutting down advanced solver...'.padEnd(78) + '║');
+        console.log('╚' + '═'.repeat(78) + '╝');
         solver.stop();
         process.exit(0);
     });

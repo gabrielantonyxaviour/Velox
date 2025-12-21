@@ -5,8 +5,9 @@ import { IntentRecord } from '@/app/lib/velox/types';
 import {
   getUserIntents as fetchUserIntentIds,
   getIntent,
-  fetchIntentEvents,
-  getIntentEventData,
+  fetchIntentTransactions,
+  getIntentTransactionData,
+  storeMakerTransaction,
 } from '@/app/lib/velox/queries';
 import {
   consumePendingTxHash,
@@ -58,14 +59,11 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
         .filter((intent): intent is IntentRecord => intent !== null)
         .sort((a, b) => b.createdAt - a.createdAt);
 
-      // Step 4: Fetch events for all intents (for tx hashes) with timeout
+      // Step 4: Fetch transactions from Supabase (much faster than indexer)
       try {
-        await Promise.race([
-          fetchIntentEvents(intentIds, userAddress),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Event fetch timeout')), 5000))
-        ]);
+        await fetchIntentTransactions(intentIds);
       } catch (err) {
-        console.warn('[Velox] Event fetching failed or timed out:', err);
+        console.warn('[Velox] Transaction fetching failed:', err);
       }
 
       // Step 5: Check for pending tx hash and associate with newest intent
@@ -79,34 +77,35 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
         if (pendingTxHash) {
           storeIntentTxHash(currentMaxId.toString(), pendingTxHash);
           cleanupOldTxHashes();
+          // Also store in Supabase for persistence across devices
+          storeMakerTransaction(currentMaxId.toString(), pendingTxHash, userAddress);
         }
         lastMaxIntentId.current = currentMaxId;
       }
 
-      // Step 6: Enrich intents with tx hashes from events and localStorage
+      // Step 6: Enrich intents with tx hashes from Supabase and localStorage
       const enrichedIntents = validIntents.map((intent) => {
-        const eventData = getIntentEventData(intent.id);
+        const txData = getIntentTransactionData(intent.id);
         const localTxHash = getIntentTxHash(intent.id.toString());
 
         console.log('[Velox] Enriching intent', intent.id.toString(), {
-          eventData: eventData ? { submitTx: eventData.submissionTxHash?.slice(0,10), fills: eventData.fillTxHashes.length } : null,
+          txData: txData ? { makerTx: txData.makerTxHash?.slice(0,10), takerCount: txData.takerTxHashes.length } : null,
           localTxHash: localTxHash?.slice(0, 10),
           fillCount: intent.fills.length
         });
 
-        // Get submitTxHash: prefer localStorage, fallback to events
-        const submitTxHash = localTxHash || eventData?.submissionTxHash || intent.submitTxHash;
+        // Get submitTxHash: prefer localStorage, fallback to Supabase
+        const submitTxHash = localTxHash || txData?.makerTxHash || intent.submitTxHash;
 
-        // Enrich fills with txHash from events
+        // Enrich fills with txHash from Supabase taker transactions
         const enrichedFills = intent.fills.map((fill, idx) => {
-          const fillNumber = idx + 1;
-          const fillEvent = eventData?.fillTxHashes.find(
-            f => f.fillNumber === fillNumber ||
-              (f.solver === fill.solver && f.inputAmount === fill.inputAmount)
-          );
+          // Match by solver address or by index
+          const takerTx = txData?.takerTxHashes.find(
+            t => t.solver === fill.solver
+          ) || txData?.takerTxHashes[idx];
           return {
             ...fill,
-            txHash: fillEvent?.txHash || fill.txHash,
+            txHash: takerTx?.txHash || fill.txHash,
           };
         });
 

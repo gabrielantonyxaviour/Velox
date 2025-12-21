@@ -64,6 +64,8 @@ export interface VeloxSolverConfig {
   skipExistingOnStartup?: boolean;
   /** Shinami Node Service API key for enhanced RPC reliability */
   shinamiNodeKey?: string;
+  /** Velox API URL for recording transactions (e.g., https://velox.app or http://localhost:3001) */
+  veloxApiUrl?: string;
 }
 
 export class VeloxSolver extends EventEmitter {
@@ -75,6 +77,7 @@ export class VeloxSolver extends EventEmitter {
   private pollingInterval: number;
   private skipExistingOnStartup: boolean;
   private registeredSolverAddress?: string;
+  private veloxApiUrl?: string;
 
   constructor(config: VeloxSolverConfig) {
     super();
@@ -95,6 +98,11 @@ export class VeloxSolver extends EventEmitter {
 
     if (config.shinamiNodeKey) {
       console.log('[VeloxSolver] Shinami Node Service enabled for enhanced reliability');
+    }
+
+    this.veloxApiUrl = config.veloxApiUrl;
+    if (this.veloxApiUrl) {
+      console.log(`[VeloxSolver] Velox API configured: ${this.veloxApiUrl}`);
     }
   }
 
@@ -319,6 +327,10 @@ export class VeloxSolver extends EventEmitter {
       });
 
       console.log(`fill_swap transaction successful: ${txHash}`);
+
+      // Record taker transaction in Velox API
+      await this.recordTakerTransaction(params.intentId, txHash, params.fillInput);
+
       return {
         success: true,
         txHash,
@@ -361,6 +373,10 @@ export class VeloxSolver extends EventEmitter {
       });
 
       console.log(`fill_limit_order transaction successful: ${txHash}`);
+
+      // Record taker transaction in Velox API
+      await this.recordTakerTransaction(params.intentId, txHash, params.fillInput);
+
       return {
         success: true,
         txHash,
@@ -401,6 +417,10 @@ export class VeloxSolver extends EventEmitter {
       });
 
       console.log(`fill_twap_chunk transaction successful: ${txHash}`);
+
+      // Record taker transaction in Velox API
+      await this.recordTakerTransaction(params.intentId, txHash, params.outputAmount);
+
       return { success: true, txHash, outputAmount: params.outputAmount };
     } catch (error) {
       console.error(`fill_twap_chunk failed:`, error);
@@ -436,10 +456,60 @@ export class VeloxSolver extends EventEmitter {
       });
 
       console.log(`fill_dca_period transaction successful: ${txHash}`);
+
+      // Record taker transaction in Velox API
+      await this.recordTakerTransaction(params.intentId, txHash, params.outputAmount);
+
       return { success: true, txHash, outputAmount: params.outputAmount };
     } catch (error) {
       console.error(`fill_dca_period failed:`, error);
       return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Record a taker transaction in the Velox API (Supabase)
+   * Called automatically after successful fills if veloxApiUrl is configured
+   */
+  async recordTakerTransaction(
+    intentId: number,
+    txHash: string,
+    fillAmount?: bigint
+  ): Promise<void> {
+    if (!this.veloxApiUrl) {
+      console.log('[VeloxSolver] No Velox API URL configured, skipping transaction recording');
+      return;
+    }
+
+    const solverAddress = this.client.getAccountAddress();
+    if (!solverAddress) {
+      console.warn('[VeloxSolver] No solver address available for recording transaction');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${this.veloxApiUrl}/api/transactions/taker`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          intent_id: intentId.toString(),
+          taker_tx_hash: txHash,
+          solver_address: solverAddress,
+          fill_amount: fillAmount?.toString(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.warn(`[VeloxSolver] Failed to record taker tx: ${response.status}`, errorData);
+        return;
+      }
+
+      console.log(`[VeloxSolver] Taker transaction recorded: ${txHash}`);
+    } catch (error) {
+      console.warn('[VeloxSolver] Error recording taker transaction:', (error as Error).message);
     }
   }
 

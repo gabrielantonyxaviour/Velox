@@ -28,6 +28,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@shinami/clients": "^0.9.8",
     "@solana-program/system": "^0.10.0",
+    "@supabase/supabase-js": "^2.90.1",
     "@telegram-apps/bridge": "^2.10.3",
     "@wallet-standard/core": "^1.1.1",
     "aptos": "^1.22.1",

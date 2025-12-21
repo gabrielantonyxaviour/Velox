@@ -6,13 +6,18 @@ export interface VeloxSolverConfig {
     veloxAddress: string;
     /** Fee config address (defaults to veloxAddress) */
     feeConfigAddr?: string;
+    /** Private key of the operator wallet (used for signing transactions) */
     privateKey?: string;
+    /** Address where the solver is registered on-chain (can be different from operator wallet) */
+    registeredSolverAddress?: string;
     graphqlUrl?: string;
     pollingInterval?: number;
     /** Skip processing intents that existed before the solver started */
     skipExistingOnStartup?: boolean;
     /** Shinami Node Service API key for enhanced RPC reliability */
     shinamiNodeKey?: string;
+    /** Velox API URL for recording transactions (e.g., https://velox.app or http://localhost:3001) */
+    veloxApiUrl?: string;
 }
 export declare class VeloxSolver extends EventEmitter {
     private client;
@@ -22,11 +27,18 @@ export declare class VeloxSolver extends EventEmitter {
     private isRunning;
     private pollingInterval;
     private skipExistingOnStartup;
+    private registeredSolverAddress?;
+    private veloxApiUrl?;
     constructor(config: VeloxSolverConfig);
     getActiveIntents(): Promise<IntentRecord[]>;
     getIntent(intentId: number): Promise<IntentRecord | null>;
-    startIntentStream(callback: (record: IntentRecord) => void): void;
+    startIntentStream(callback: (record: IntentRecord) => void): Promise<void>;
     stopIntentStream(): void;
+    /**
+     * Validate that solver is registered with stake before starting
+     * Fetches and displays solver metadata
+     */
+    validateSolverRegistration(): Promise<void>;
     /**
      * Fill a swap intent (partial or full)
      * Uses settlement::fill_swap
@@ -47,6 +59,11 @@ export declare class VeloxSolver extends EventEmitter {
      * Uses settlement::fill_dca_period
      */
     fillDcaPeriod(params: ChunkFillParams): Promise<FillResult>;
+    /**
+     * Record a taker transaction in the Velox API (Supabase)
+     * Called automatically after successful fills if veloxApiUrl is configured
+     */
+    recordTakerTransaction(intentId: number, txHash: string, fillAmount?: bigint): Promise<void>;
     /**
      * Check if solver can fill an intent
      */

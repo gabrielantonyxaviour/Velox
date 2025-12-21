@@ -3,23 +3,31 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const VeloxSolver_1 = require("../VeloxSolver");
 const intent_1 = require("../types/intent");
+const cliStyle_1 = require("../utils/cliStyle");
 async function main() {
+    // Beautiful startup banner
+    (0, cliStyle_1.printVeloxLogo)();
+    (0, cliStyle_1.printSection)('💎 VELOX DUTCH AUCTION SOLVER');
+    console.log('');
+    (0, cliStyle_1.printKeyValue)('⏱️  Polling Interval', '5,000ms (5 seconds)');
+    (0, cliStyle_1.printKeyValue)('🎯 Auction Type', 'Dutch (Descending Price)');
+    (0, cliStyle_1.printKeyValue)('⏭️  Skip Existing Intents', 'ENABLED');
+    console.log('');
     const solver = new VeloxSolver_1.VeloxSolver({
         rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
         veloxAddress: process.env.VELOX_ADDRESS ||
-            '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
+            '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb',
         privateKey: process.env.SOLVER_PRIVATE_KEY,
         pollingInterval: 5000, // 5 seconds to avoid rate limiting
         skipExistingOnStartup: true,
     });
-    console.log('Starting Velox Dutch Auction Solver...');
-    console.log('Listening for Dutch auctions...\n');
     // Handle errors
     solver.on('error', (error) => {
-        console.error('Solver error:', error.message);
+        console.error('\n  ❌ Solver error:', error.message);
     });
-    // Listen for new intents - check all SWAP intents for Dutch auctions
-    solver.startIntentStream(async (intent) => {
+    // Listen for new intents - validates registration before starting
+    // Check all SWAP intents for Dutch auctions
+    await solver.startIntentStream(async (intent) => {
         // Only handle SWAP intents that might have Dutch auctions
         if (intent.type !== intent_1.IntentType.SWAP) {
             console.log(`Skipping intent ${intent.id} - not a SWAP type`);
@@ -46,11 +54,18 @@ async function main() {
     });
     // Handle graceful shutdown
     process.on('SIGINT', () => {
-        console.log('\nShutting down Dutch solver...');
+        console.log('\n');
+        console.log('╔' + '═'.repeat(78) + '╗');
+        console.log('║' + '  ⏹️  Shutting down Dutch auction solver...'.padEnd(78) + '║');
+        console.log('╚' + '═'.repeat(78) + '╝');
         solver.stopIntentStream();
         process.exit(0);
     });
     process.on('SIGTERM', () => {
+        console.log('\n');
+        console.log('╔' + '═'.repeat(78) + '╗');
+        console.log('║' + '  ⏹️  Terminating Dutch auction solver...'.padEnd(78) + '║');
+        console.log('╚' + '═'.repeat(78) + '╝');
         solver.stopIntentStream();
         process.exit(0);
     });
