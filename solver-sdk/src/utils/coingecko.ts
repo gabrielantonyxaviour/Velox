@@ -4,12 +4,12 @@
 // Token address to CoinGecko ID mapping
 const TOKEN_MAPPING: Record<string, { symbol: string; coinGeckoId: string }> = {
   // tUSDC - deployed on Movement testnet
-  '0xd249fd3776a6bf959963d2f7712386da3f343a973f0d88ed05b1e9e6be6cb015': {
+  '0xfb34c9c1600d86a9acdb351aaf6fddce6a0de7254bced08c38fcaf364e525297': {
     symbol: 'tUSDC',
     coinGeckoId: 'usd-coin',
   },
   // tMOVE - deployed on Movement testnet
-  '0x9913b3a2cd19b572521bcc890058dfd285943fbfa33b7c954879f55bbe5da89': {
+  '0x8f82fb318e613f63aca2168b11ba2a08a66606c7e862c38128e414856b840ec5': {
     symbol: 'tMOVE',
     coinGeckoId: 'movement',
   },
