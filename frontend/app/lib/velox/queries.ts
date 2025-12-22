@@ -83,11 +83,12 @@ function parseAuctionState(rawAuction: Record<string, unknown> | undefined): Auc
  */
 function parseFills(rawFills: unknown): Fill[] {
   if (!Array.isArray(rawFills)) return [];
-  return rawFills.map((f: Record<string, unknown>) => ({
+  return rawFills.map((f: Record<string, unknown>, idx: number) => ({
     solver: String(f.solver || ''),
     inputAmount: BigInt(String(f.input_amount || '0')),
     outputAmount: BigInt(String(f.output_amount || '0')),
     filledAt: Number(f.filled_at || 0),
+    chunkNumber: idx + 1,
   }));
 }
 
@@ -319,10 +320,17 @@ export async function getTokenBalance(
 
 // ============ Event Caching ============
 
+interface FillEventData {
+  txHash: string;
+  fillNumber: number;
+  solver: string;
+  inputAmount: bigint;
+  outputAmount: bigint;
+}
+
 interface IntentEventData {
   submissionTxHash?: string;
-  settlementTxHash?: string;
-  outputAmount?: bigint;
+  fillTxHashes: FillEventData[];
 }
 
 const eventCache: Map<string, IntentEventData> = new Map();
@@ -354,21 +362,32 @@ function parseEventsFromTransactions(transactions: Transaction[], intentIds: big
         const intentId = String(data.intent_id);
 
         if (intentIds.some(id => id.toString() === intentId)) {
-          const existing = eventCache.get(intentId) || {};
+          const existing = eventCache.get(intentId) || { fillTxHashes: [] };
           existing.submissionTxHash = tx.hash || tx.version;
           eventCache.set(intentId, existing);
         }
       }
 
-      // Check for IntentFilled events
+      // Check for IntentFilled events - this captures each fill tx
       if (event.type.includes('::settlement::IntentFilled')) {
         const data = event.data;
         const intentId = String(data.intent_id);
 
         if (intentIds.some(id => id.toString() === intentId)) {
-          const existing = eventCache.get(intentId) || {};
-          existing.settlementTxHash = tx.hash || tx.version;
-          existing.outputAmount = BigInt(String(data.output_amount || '0'));
+          const existing = eventCache.get(intentId) || { fillTxHashes: [] };
+          const txHash = tx.hash || tx.version;
+          const fillNumber = Number(data.fill_number || 1);
+
+          // Avoid duplicate entries
+          if (!existing.fillTxHashes.some(f => f.txHash === txHash)) {
+            existing.fillTxHashes.push({
+              txHash,
+              fillNumber,
+              solver: String(data.solver || ''),
+              inputAmount: BigInt(String(data.input_amount || '0')),
+              outputAmount: BigInt(String(data.output_amount || '0')),
+            });
+          }
           eventCache.set(intentId, existing);
         }
       }
