@@ -553,7 +553,8 @@ function IntentContent({ intent, countdown, renderRow, renderLink }: IntentConte
                 renderRow('Min Amount Out', `${formatAmount(intentData.minAmountOut, outputDecimals)} ${outputSymbol}`)
               )}
               {intent.totalOutputReceived > 0n && (
-                renderRow('Actual Output', `${formatAmount(intent.totalOutputReceived, outputDecimals)} ${outputSymbol}`)}
+                renderRow('Actual Output', `${formatAmount(intent.totalOutputReceived, outputDecimals)} ${outputSymbol}`)
+              )}
             </>
           )}
           {intentData.type === 'limit_order' && (
