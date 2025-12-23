@@ -336,6 +336,7 @@ interface IntentEventData {
 const eventCache: Map<string, IntentEventData> = new Map();
 
 const RPC_URL = MOVEMENT_CONFIGS[CURRENT_NETWORK].fullnode;
+const INDEXER_URL = 'https://indexer.testnet.movementnetwork.xyz/v1/graphql';
 
 interface TransactionEvent {
   type: string;
@@ -397,27 +398,55 @@ function parseEventsFromTransactions(transactions: Transaction[], intentIds: big
 
 /**
  * Fetch IntentCreated and IntentFilled events for given intent IDs
- * Uses the Aptos SDK to query module events directly
+ * Uses the Movement GraphQL indexer for reliable event querying
  */
 export async function fetchIntentEvents(intentIds: bigint[], userAddress?: string): Promise<void> {
   if (intentIds.length === 0) return;
 
   try {
-    // Fetch IntentCreated events
-    const createdEvents = await aptos.getModuleEventsByEventType({
-      eventType: `${VELOX_ADDRESS}::submission::IntentCreated`,
-      minimumLedgerVersion: 0,
-    }).catch(() => []);
+    // Query IntentCreated events from indexer
+    const createdQuery = `{
+      events(
+        where: {
+          type: {_eq: "${VELOX_ADDRESS}::submission::IntentCreated"}
+        },
+        limit: 100
+      ) {
+        transaction_version
+        data
+      }
+    }`;
 
-    // Fetch IntentFilled events
-    const filledEvents = await aptos.getModuleEventsByEventType({
-      eventType: `${VELOX_ADDRESS}::settlement::IntentFilled`,
-      minimumLedgerVersion: 0,
-    }).catch(() => []);
+    // Query IntentFilled events from indexer
+    const filledQuery = `{
+      events(
+        where: {
+          type: {_eq: "${VELOX_ADDRESS}::settlement::IntentFilled"}
+        },
+        limit: 100
+      ) {
+        transaction_version
+        data
+      }
+    }`;
+
+    const [createdRes, filledRes] = await Promise.all([
+      fetch(INDEXER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: createdQuery }),
+      }).then(res => res.json()).catch(() => ({ data: { events: [] } })),
+      fetch(INDEXER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: filledQuery }),
+      }).then(res => res.json()).catch(() => ({ data: { events: [] } })),
+    ]);
 
     // Process IntentCreated events
+    const createdEvents = createdRes?.data?.events || [];
     for (const event of createdEvents) {
-      const data = event.data as Record<string, unknown>;
+      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
       const intentId = String(data.intent_id);
 
       if (intentIds.some(id => id.toString() === intentId)) {
@@ -428,8 +457,9 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
     }
 
     // Process IntentFilled events
+    const filledEvents = filledRes?.data?.events || [];
     for (const event of filledEvents) {
-      const data = event.data as Record<string, unknown>;
+      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
       const intentId = String(data.intent_id);
 
       if (intentIds.some(id => id.toString() === intentId)) {
@@ -451,22 +481,7 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
       }
     }
   } catch (error) {
-    console.warn('[Velox] Event fetching failed, trying fallback:', error);
-
-    // Fallback: try fetching from user transactions
-    try {
-      if (userAddress) {
-        const userTxs = await fetch(`${RPC_URL}/accounts/${userAddress}/transactions?limit=50`)
-          .then(res => res.ok ? res.json() : [])
-          .catch(() => []);
-
-        if (Array.isArray(userTxs)) {
-          parseEventsFromTransactions(userTxs, intentIds);
-        }
-      }
-    } catch {
-      // Silent fail for fallback
-    }
+    console.warn('[Velox] Event fetching from indexer failed:', error);
   }
 }
 
