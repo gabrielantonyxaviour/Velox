@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     if (executedTx.success) {
       console.log(`[complete-auction] Success! TX: ${executedTx.hash}`);
 
-      // Fetch the intent to get the winner address
+      // Fetch the intent to get the winner address and fill details
       try {
         const intentResult = await movementClient.view({
           payload: {
@@ -104,23 +104,45 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        console.log(`[complete-auction] Intent result:`, JSON.stringify(intentResult[0], null, 2));
+
         if (intentResult && intentResult[0]) {
           const record = intentResult[0] as Record<string, unknown>;
           const auction = record.auction as Record<string, unknown>;
+          const fills = record.fills as Array<Record<string, unknown>>;
+
+          // Get winner from SealedBidCompleted auction state
           const winner = auction?.winner as string;
+          // Get fill amount from the fills array (should have 1 fill after completion)
+          const fillAmount = fills && fills.length > 0
+            ? (fills[0].input_amount as string)
+            : undefined;
+
+          console.log(`[complete-auction] Winner: ${winner}, Fill amount: ${fillAmount}`);
 
           if (winner) {
             // Record the taker transaction (the complete_sealed_bid is the fill)
-            await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/transactions/taker`, {
+            const takerResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/api/transactions/taker`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 intent_id: intentId.toString(),
                 taker_tx_hash: executedTx.hash,
                 solver_address: winner,
+                fill_amount: fillAmount,
               }),
             });
-            console.log(`[complete-auction] Recorded taker TX for winner: ${winner}`);
+
+            const takerResult = await takerResponse.json();
+            console.log(`[complete-auction] Taker TX response:`, takerResult);
+
+            if (takerResponse.ok) {
+              console.log(`[complete-auction] Recorded taker TX for winner: ${winner}`);
+            } else {
+              console.warn(`[complete-auction] Failed to record taker TX:`, takerResult);
+            }
+          } else {
+            console.warn(`[complete-auction] No winner found in auction:`, auction);
           }
         }
       } catch (recordError) {

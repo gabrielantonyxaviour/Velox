@@ -46,7 +46,11 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
   const duration = auction.duration ?? 0;
   const startTime = auction.startTime ?? intent.createdAt;
   const isActive = isAuctionActive(intent);
-  const purchasePrice = auction.acceptedPrice;
+  // For filled intents, use actual received amount instead of acceptedPrice
+  // The acceptedPrice is the auction price at acceptance, but actual fill may differ
+  const isFilled = intent.status === 'filled';
+  const actualReceived = intent.totalOutputReceived;
+  const purchasePrice = isFilled && actualReceived > 0n ? actualReceived : auction.acceptedPrice;
 
   const [currentPrice, setCurrentPrice] = useState<bigint>(startPrice);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
