@@ -4,6 +4,86 @@ require("dotenv/config");
 const VeloxSolver_1 = require("../VeloxSolver");
 const intent_1 = require("../types/intent");
 const cliStyle_1 = require("../utils/cliStyle");
+// Helper to record bid transaction to API
+async function recordBidTransaction(intentId, bidTxHash, solverAddress, bidAmount) {
+    const apiUrl = process.env.VELOX_API_URL;
+    if (!apiUrl) {
+        console.log(`[Bid TX] VELOX_API_URL not configured - bid not recorded`);
+        return;
+    }
+    try {
+        const response = await fetch(`${apiUrl}/api/transactions/bid`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                intent_id: intentId.toString(),
+                bid_tx_hash: bidTxHash,
+                solver_address: solverAddress,
+                bid_amount: bidAmount.toString(),
+            }),
+        });
+        if (response.ok) {
+            console.log(`[Bid TX] Recorded bid transaction to API`);
+        }
+        else {
+            const data = await response.json();
+            console.log(`[Bid TX] Failed to record: ${data.error}`);
+        }
+    }
+    catch (error) {
+        console.error(`[Bid TX] API call failed:`, error.message);
+    }
+}
+// Helper to call the complete-auction API
+async function triggerAuctionCompletion(intentId) {
+    const apiUrl = process.env.VELOX_API_URL;
+    if (!apiUrl) {
+        return { success: false, error: 'VELOX_API_URL not configured' };
+    }
+    try {
+        console.log(`Triggering auction completion via API...`);
+        const response = await fetch(`${apiUrl}/api/complete-auction`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ intentId: Number(intentId) }),
+        });
+        const data = await response.json();
+        if (data.success) {
+            console.log(`Auction completion triggered! TX: ${data.txHash}`);
+            return { success: true, txHash: data.txHash };
+        }
+        else {
+            console.log(`Auction completion failed: ${data.error}`);
+            return { success: false, error: data.error };
+        }
+    }
+    catch (error) {
+        console.error(`API call failed:`, error.message);
+        return { success: false, error: error.message };
+    }
+}
+// Track scheduled completions to avoid duplicates
+const scheduledCompletions = new Set();
+// Schedule auction completion to run after delay (non-blocking)
+function scheduleAuctionCompletion(intentId, delayMs, callback) {
+    if (scheduledCompletions.has(intentId)) {
+        console.log(`[Scheduler] Completion already scheduled for intent #${intentId}`);
+        return;
+    }
+    scheduledCompletions.add(intentId);
+    console.log(`[Scheduler] Will complete auction #${intentId} in ${(delayMs / 1000).toFixed(0)}s`);
+    setTimeout(async () => {
+        try {
+            await callback();
+        }
+        catch (error) {
+            console.error(`[Scheduler] Error completing auction #${intentId}:`, error);
+        }
+        finally {
+            scheduledCompletions.delete(intentId);
+        }
+    }, delayMs);
+}
 async function main() {
     const shinamiNodeKey = process.env.SHINAMI_KEY;
     const solverPrivateKey = process.env.SOLVER_PRIVATE_KEY;
@@ -47,7 +127,7 @@ async function main() {
     const solver = new VeloxSolver_1.VeloxSolver({
         rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
         veloxAddress: process.env.VELOX_ADDRESS ||
-            '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb',
+            '0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470',
         // Private key of the operator wallet (used for signing transactions)
         privateKey: process.env.SOLVER_PRIVATE_KEY,
         // Address where solver is registered on-chain (can be different from operator)
@@ -64,16 +144,27 @@ async function main() {
     solver.on('error', (error) => {
         console.error('\n  ❌ Solver error:', error.message);
     });
+    // Track intents we've already seen (for less verbose logging on re-checks)
+    const seenIntents = new Set();
     // Listen for new intents - validates registration before starting
     await solver.startIntentStream(async (record) => {
-        console.log(`\n=== New Intent Detected ===`);
-        console.log(`ID: ${record.id}`);
-        console.log(`Type: ${record.intent.type}`);
-        console.log(`User: ${record.user}`);
-        console.log(`Status: ${record.status}`);
+        const isFirstSeen = !seenIntents.has(record.id);
+        const isScheduled = record.intent.type === intent_1.IntentType.TWAP || record.intent.type === intent_1.IntentType.DCA;
+        if (isFirstSeen) {
+            seenIntents.add(record.id);
+            console.log(`\n=== New Intent Detected ===`);
+            console.log(`ID: ${record.id}`);
+            console.log(`Type: ${record.intent.type}`);
+            console.log(`User: ${record.user}`);
+            console.log(`Status: ${record.status}`);
+        }
         // Check if we can fill this intent
         if (record.status !== intent_1.IntentStatus.ACTIVE) {
-            console.log(`Skipping - intent status is ${record.status}`);
+            if (isFirstSeen) {
+                console.log(`Skipping - intent status is ${record.status}`);
+            }
+            // Remove from seen if no longer active (completed/cancelled)
+            seenIntents.delete(record.id);
             return;
         }
         try {
@@ -84,10 +175,10 @@ async function main() {
                 await handleLimitOrderIntent(solver, record);
             }
             else if (record.intent.type === intent_1.IntentType.DCA) {
-                await handleDCAIntent(solver, record);
+                await handleDCAIntent(solver, record, isFirstSeen);
             }
             else if (record.intent.type === intent_1.IntentType.TWAP) {
-                await handleTWAPIntent(solver, record);
+                await handleTWAPIntent(solver, record, isFirstSeen);
             }
             else {
                 console.log(`Skipping - unsupported intent type: ${record.intent.type}`);
@@ -209,9 +300,17 @@ async function submitSwapBid(solver, record, outputAmount) {
     const endTime = auction.endTime || 0;
     const now = Date.now() / 1000;
     if (now >= endTime) {
-        console.log(`Auction period ended - cannot submit bid`);
+        console.log(`Auction period ended - triggering completion via invisible wallet...`);
         console.log(`  Auction ended at: ${new Date(endTime * 1000).toISOString()}`);
-        console.log(`  Waiting for auction completion...`);
+        // Trigger auction completion via API (automatically settles the swap)
+        const completionResult = await triggerAuctionCompletion(record.id);
+        if (completionResult.success) {
+            console.log(`Auction #${record.id} completed and settled via invisible wallet!`);
+            console.log(`TX Hash: ${completionResult.txHash}`);
+        }
+        else {
+            console.log(`Auction #${record.id} completion failed: ${completionResult.error}`);
+        }
         return;
     }
     const timeRemaining = endTime - now;
@@ -224,6 +323,24 @@ async function submitSwapBid(solver, record, outputAmount) {
         console.log(`TX Hash: ${result.txHash}`);
         console.log(`Bid Output Amount: ${outputAmount}`);
         console.log(`Auction ends: ${new Date(endTime * 1000).toISOString()}`);
+        // Record bid transaction to API
+        const solverStats = await solver.getSolverStats();
+        await recordBidTransaction(record.id, result.txHash, solverStats.address, outputAmount);
+        // Schedule auction completion after it ends
+        // Run in background so we don't block processing of other intents
+        const waitTime = Math.max(0, timeRemaining + 1) * 1000;
+        console.log(`Scheduling auction completion in ${(waitTime / 1000).toFixed(0)}s...`);
+        scheduleAuctionCompletion(record.id, waitTime, async () => {
+            console.log(`\n=== Triggering Auction Completion for Intent #${record.id} ===`);
+            const completionResult = await triggerAuctionCompletion(record.id);
+            if (completionResult.success) {
+                console.log(`Auction #${record.id} completed via invisible wallet!`);
+                console.log(`TX Hash: ${completionResult.txHash}`);
+            }
+            else {
+                console.log(`Auction #${record.id} completion failed: ${completionResult.error}`);
+            }
+        });
     }
     else {
         console.log(`\n=== Bid Submission Failed ===`);
@@ -308,20 +425,27 @@ async function handleLimitOrderIntent(solver, record) {
         console.log(`Error: ${result.error}`);
     }
 }
-async function handleDCAIntent(solver, record) {
+async function handleDCAIntent(solver, record, isFirstSeen = true) {
     const intent = record.intent;
-    console.log(`Processing DCA intent...`);
-    console.log(`  Amount per Period: ${intent.amountPerPeriod}`);
-    console.log(`  Total Periods: ${intent.totalPeriods}`);
-    console.log(`  Interval: ${intent.intervalSeconds}s`);
-    console.log(`  Periods executed: ${record.chunksExecuted}/${intent.totalPeriods}`);
+    if (isFirstSeen) {
+        console.log(`Processing DCA intent...`);
+        console.log(`  Amount per Period: ${intent.amountPerPeriod}`);
+        console.log(`  Total Periods: ${intent.totalPeriods}`);
+        console.log(`  Interval: ${intent.intervalSeconds}s`);
+        console.log(`  Periods executed: ${record.chunksExecuted}/${intent.totalPeriods}`);
+    }
     // Check if next period is ready
     const isReady = (0, intent_1.isNextChunkReady)(record);
     if (!isReady) {
-        const nextTime = new Date(record.nextExecution * 1000).toISOString();
-        console.log(`Skipping - next period not ready until ${nextTime}`);
+        if (isFirstSeen) {
+            const nextTime = new Date(record.nextExecution * 1000).toISOString();
+            console.log(`Skipping - next period not ready until ${nextTime}`);
+        }
         return;
     }
+    // Log when we're actually processing a period (either first time or re-check)
+    console.log(`\n=== DCA Period Ready (Intent #${record.id}) ===`);
+    console.log(`  Periods executed: ${record.chunksExecuted}/${intent.totalPeriods}`);
     // Check if all periods are complete
     const remaining = (0, intent_1.getRemainingChunks)(record);
     if (remaining <= 0) {
@@ -349,21 +473,28 @@ async function handleDCAIntent(solver, record) {
         console.log(`Error: ${result.error}`);
     }
 }
-async function handleTWAPIntent(solver, record) {
+async function handleTWAPIntent(solver, record, isFirstSeen = true) {
     const intent = record.intent;
-    console.log(`Processing TWAP intent...`);
-    console.log(`  Total Amount: ${intent.totalAmount}`);
-    console.log(`  Num Chunks: ${intent.numChunks}`);
-    console.log(`  Interval: ${intent.intervalSeconds}s`);
-    console.log(`  Max Slippage: ${intent.maxSlippageBps}bps`);
-    console.log(`  Chunks executed: ${record.chunksExecuted}/${intent.numChunks}`);
+    if (isFirstSeen) {
+        console.log(`Processing TWAP intent...`);
+        console.log(`  Total Amount: ${intent.totalAmount}`);
+        console.log(`  Num Chunks: ${intent.numChunks}`);
+        console.log(`  Interval: ${intent.intervalSeconds}s`);
+        console.log(`  Max Slippage: ${intent.maxSlippageBps}bps`);
+        console.log(`  Chunks executed: ${record.chunksExecuted}/${intent.numChunks}`);
+    }
     // Check if next chunk is ready
     const isReady = (0, intent_1.isNextChunkReady)(record);
     if (!isReady) {
-        const nextTime = new Date(record.nextExecution * 1000).toISOString();
-        console.log(`Skipping - next chunk not ready until ${nextTime}`);
+        if (isFirstSeen) {
+            const nextTime = new Date(record.nextExecution * 1000).toISOString();
+            console.log(`Skipping - next chunk not ready until ${nextTime}`);
+        }
         return;
     }
+    // Log when we're actually processing a chunk (either first time or re-check)
+    console.log(`\n=== TWAP Chunk Ready (Intent #${record.id}) ===`);
+    console.log(`  Chunks executed: ${record.chunksExecuted}/${intent.numChunks}`);
     // Check if all chunks are complete
     const remaining = (0, intent_1.getRemainingChunks)(record);
     if (remaining <= 0) {

@@ -134,7 +134,8 @@ async function main() {
   printKeyValue(`${shinamiNodeKey ? '✅' : '⏭️ '} Shinami Node Service`, shinamiNodeKey ? 'CONFIGURED' : 'DISABLED');
   printKeyValue(`${registeredSolverAddress ? '✅' : '⏭️ '} Registered Solver Address`, registeredSolverAddress ? 'CONFIGURED' : 'WILL USE OPERATOR ADDRESS');
   printKeyValue(`${veloxApiUrl ? '✅' : '⏭️ '} Velox API URL`, veloxApiUrl || 'NOT CONFIGURED (taker txs not recorded)');
-  printKeyValue('⏭️  Skip Existing Intents', 'ENABLED');
+  const skipExisting = process.env.SKIP_EXISTING !== 'false';
+  printKeyValue('⏭️  Skip Existing Intents', skipExisting ? 'ENABLED' : 'DISABLED');
   console.log('');
 
   const solver = new VeloxSolver({
@@ -148,7 +149,7 @@ async function main() {
     // If not provided, will use the address derived from privateKey
     registeredSolverAddress: process.env.REGISTERED_SOLVER_ADDRESS,
     pollingInterval: 10000, // 10 seconds to avoid rate limiting
-    skipExistingOnStartup: true,
+    skipExistingOnStartup: skipExisting,
     shinamiNodeKey,
     // Velox API URL for recording taker transactions (optional)
     // Set to your deployed frontend URL (e.g., https://velox.vercel.app)

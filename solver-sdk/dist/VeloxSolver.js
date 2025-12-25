@@ -364,7 +364,7 @@ class VeloxSolver extends events_1.EventEmitter {
             console.log('[VeloxSolver] No Velox API URL configured, skipping transaction recording');
             return;
         }
-        const solverAddress = this.client.getAccountAddress();
+        const solverAddress = this.registeredSolverAddress || this.client.getAccountAddress();
         if (!solverAddress) {
             console.warn('[VeloxSolver] No solver address available for recording transaction');
             return;
@@ -585,7 +585,7 @@ class VeloxSolver extends events_1.EventEmitter {
     }
     // ============ Solver Stats ============
     async getSolverStats(address) {
-        const solverAddress = address || this.client.getAccountAddress();
+        const solverAddress = address || this.registeredSolverAddress || this.client.getAccountAddress();
         if (!solverAddress) {
             throw new Error('No solver address provided');
         }
@@ -598,7 +598,12 @@ class VeloxSolver extends events_1.EventEmitter {
             return this.parseSolverStats(result[0], solverAddress);
         }
         catch (error) {
-            console.error(`Error getting solver stats:`, error);
+            // Error 20 = ESOLVER_NOT_REGISTERED - expected for unregistered solvers
+            const isNotRegisteredError = error instanceof Error &&
+                error.message?.includes('sub_status: Some(20)');
+            if (!isNotRegisteredError) {
+                console.error(`Error getting solver stats:`, error);
+            }
             return {
                 address: solverAddress,
                 isRegistered: false,
@@ -618,12 +623,18 @@ class VeloxSolver extends events_1.EventEmitter {
     // ============ Private Methods ============
     async pollIntents(callback) {
         const lastSeen = new Set();
+        // Track scheduled intents (TWAP/DCA) that need periodic re-checking
+        const scheduledIntents = new Set();
         if (this.skipExistingOnStartup) {
             try {
                 const existingIntents = await this.getActiveIntents();
                 console.log(`Skipping ${existingIntents.length} existing active intents...`);
                 for (const record of existingIntents) {
                     lastSeen.add(record.id);
+                    // Track existing scheduled intents for re-checking
+                    if (record.intent.type === intent_1.IntentType.TWAP || record.intent.type === intent_1.IntentType.DCA) {
+                        scheduledIntents.add(record.id);
+                    }
                 }
             }
             catch (error) {
@@ -634,9 +645,39 @@ class VeloxSolver extends events_1.EventEmitter {
             try {
                 const intents = await this.getActiveIntents();
                 for (const record of intents) {
+                    const isScheduled = record.intent.type === intent_1.IntentType.TWAP || record.intent.type === intent_1.IntentType.DCA;
+                    // Check if scheduled intent is fully completed
+                    if (isScheduled) {
+                        const remaining = (0, intent_1.getRemainingChunks)(record);
+                        if (remaining === 0) {
+                            // All chunks done - stop tracking this intent
+                            if (scheduledIntents.has(record.id)) {
+                                scheduledIntents.delete(record.id);
+                            }
+                            continue; // Skip callback for completed scheduled intents
+                        }
+                    }
                     if (!lastSeen.has(record.id)) {
+                        // New intent - process it
                         callback(record);
                         lastSeen.add(record.id);
+                        if (isScheduled) {
+                            scheduledIntents.add(record.id);
+                        }
+                    }
+                    else if (isScheduled && scheduledIntents.has(record.id)) {
+                        // Re-check scheduled intents on every poll cycle
+                        // The callback handler will check if the next chunk is ready
+                        callback(record);
+                    }
+                }
+                // Clean up completed/cancelled scheduled intents (no longer returned by getActiveIntents)
+                const scheduledArray = Array.from(scheduledIntents);
+                for (let i = 0; i < scheduledArray.length; i++) {
+                    const id = scheduledArray[i];
+                    const stillActive = intents.find(r => r.id === id);
+                    if (!stillActive) {
+                        scheduledIntents.delete(id);
                     }
                 }
             }
