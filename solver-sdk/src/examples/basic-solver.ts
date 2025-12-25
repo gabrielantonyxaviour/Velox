@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { VeloxSolver } from '../VeloxSolver';
-import { IntentRecord, IntentType, IntentStatus, isNextChunkReady, getRemainingChunks } from '../types/intent';
+import { IntentRecord, IntentType, IntentStatus, AuctionType, isNextChunkReady, getRemainingChunks } from '../types/intent';
 import { printVeloxLogo, printSection, printKeyValue, printSuccess, printLoadingAnimation } from '../utils/cliStyle';
 
 async function main() {
@@ -124,20 +124,23 @@ async function main() {
 
 async function handleSwapIntent(solver: VeloxSolver, record: IntentRecord): Promise<void> {
   const intent = record.intent;
+  const auction = record.auction;
 
   console.log(`Processing SWAP intent...`);
   console.log(`  Input: ${intent.amountIn} from ${intent.inputToken}`);
   console.log(`  Output Token: ${intent.outputToken}`);
   console.log(`  Min Output Required: ${intent.minAmountOut}`);
+  console.log(`  Auction Type: ${auction.type}`);
 
-  // Note: canFill check currently has SDK issues, skipping for now
-  // const canFill = await solver.canFill(record.id);
-  // if (!canFill) {
-  //   console.log(`Skipping - cannot fill this intent`);
-  //   return;
-  // }
+  // Check deadline
+  const deadline = intent.deadline || Date.now() / 1000;
+  const now = Date.now() / 1000;
+  if (now > deadline) {
+    console.log(`Skipping - intent deadline passed`);
+    return;
+  }
 
-  // Find best route for the swap
+  // Find best route for pricing
   console.log('Finding best swap route...');
   const route = await solver.findBestRoute(
     intent.inputToken,
@@ -157,26 +160,141 @@ async function handleSwapIntent(solver: VeloxSolver, record: IntentRecord): Prom
     return;
   }
 
-  // Check deadline
-  const deadline = intent.deadline || Date.now() / 1000;
-  const now = Date.now() / 1000;
-  if (now > deadline) {
-    console.log(`Skipping - intent deadline passed`);
-    return;
-  }
+  // Handle different auction types
+  switch (auction.type) {
+    case AuctionType.NONE:
+      // No auction - fill directly
+      await fillSwapDirect(solver, record, route.expectedOutput);
+      break;
 
-  // Fill the swap
-  console.log('Filling swap intent...');
+    case AuctionType.SEALED_BID_ACTIVE:
+      // Auction is active - submit a bid
+      await submitSwapBid(solver, record, route.expectedOutput);
+      break;
+
+    case AuctionType.SEALED_BID_COMPLETED:
+      // Auction completed - check if we're the winner and fill
+      await fillSwapAsWinner(solver, record, route.expectedOutput);
+      break;
+
+    case AuctionType.DUTCH_ACTIVE:
+      // Dutch auction - accept at current price
+      console.log(`Dutch auction active - accepting current price...`);
+      const dutchResult = await solver.acceptDutchAuction(record.id);
+      if (dutchResult.success) {
+        console.log(`Dutch auction accepted! TX: ${dutchResult.txHash}`);
+        // After accepting, we can fill
+        await fillSwapDirect(solver, record, route.expectedOutput);
+      } else {
+        console.log(`Dutch auction acceptance failed: ${dutchResult.error}`);
+      }
+      break;
+
+    case AuctionType.DUTCH_ACCEPTED:
+      // Check if we're the accepted solver
+      const solverAddr = await solver.getSolverStats();
+      if (auction.winner === solverAddr.address) {
+        await fillSwapDirect(solver, record, route.expectedOutput);
+      } else {
+        console.log(`Skipping - another solver accepted the Dutch auction`);
+      }
+      break;
+
+    case AuctionType.FAILED:
+      console.log(`Skipping - auction failed`);
+      break;
+
+    default:
+      console.log(`Unknown auction type: ${auction.type}`);
+  }
+}
+
+async function fillSwapDirect(solver: VeloxSolver, record: IntentRecord, outputAmount: bigint): Promise<void> {
+  console.log('Filling swap intent directly...');
   const result = await solver.fillSwap({
     intentId: record.id,
-    fillInput: intent.amountIn!,
-    outputAmount: route.expectedOutput,
+    fillInput: record.intent.amountIn!,
+    outputAmount,
   });
 
   if (result.success) {
     console.log(`\n=== Swap Filled Successfully! ===`);
     console.log(`TX Hash: ${result.txHash}`);
-    console.log(`Output Amount: ${route.expectedOutput}`);
+    console.log(`Output Amount: ${outputAmount}`);
+  } else {
+    console.log(`\n=== Swap Fill Failed ===`);
+    console.log(`Error: ${result.error}`);
+  }
+}
+
+async function submitSwapBid(solver: VeloxSolver, record: IntentRecord, outputAmount: bigint): Promise<void> {
+  const auction = record.auction;
+  const endTime = auction.endTime || 0;
+  const now = Date.now() / 1000;
+
+  if (now >= endTime) {
+    console.log(`Auction period ended - cannot submit bid`);
+    console.log(`  Auction ended at: ${new Date(endTime * 1000).toISOString()}`);
+    console.log(`  Waiting for auction completion...`);
+    return;
+  }
+
+  const timeRemaining = endTime - now;
+  console.log(`Sealed bid auction active - submitting bid...`);
+  console.log(`  Time remaining: ${timeRemaining.toFixed(0)}s`);
+  console.log(`  Bid amount (output): ${outputAmount}`);
+
+  const result = await solver.submitBid(record.id, outputAmount);
+
+  if (result.success) {
+    console.log(`\n=== Bid Submitted Successfully! ===`);
+    console.log(`TX Hash: ${result.txHash}`);
+    console.log(`Bid Output Amount: ${outputAmount}`);
+    console.log(`Auction ends: ${new Date(endTime * 1000).toISOString()}`);
+  } else {
+    console.log(`\n=== Bid Submission Failed ===`);
+    console.log(`Error: ${result.error}`);
+  }
+}
+
+async function fillSwapAsWinner(solver: VeloxSolver, record: IntentRecord, outputAmount: bigint): Promise<void> {
+  const auction = record.auction;
+  const solverStats = await solver.getSolverStats();
+
+  console.log(`Sealed bid auction completed`);
+  console.log(`  Winner: ${auction.winner}`);
+  console.log(`  Our address: ${solverStats.address}`);
+
+  if (auction.winner !== solverStats.address) {
+    console.log(`Skipping - we are not the auction winner`);
+    return;
+  }
+
+  // Check fill deadline
+  const fillDeadline = auction.fillDeadline || 0;
+  const now = Date.now() / 1000;
+  if (now > fillDeadline) {
+    console.log(`Skipping - fill deadline passed`);
+    return;
+  }
+
+  console.log(`We won the auction! Filling swap...`);
+  console.log(`  Winning bid: ${auction.winningBid}`);
+  console.log(`  Fill deadline: ${new Date(fillDeadline * 1000).toISOString()}`);
+
+  // Use winning bid amount as output (we committed to it)
+  const fillAmount = auction.winningBid || outputAmount;
+
+  const result = await solver.fillSwap({
+    intentId: record.id,
+    fillInput: record.intent.amountIn!,
+    outputAmount: fillAmount,
+  });
+
+  if (result.success) {
+    console.log(`\n=== Swap Filled as Auction Winner! ===`);
+    console.log(`TX Hash: ${result.txHash}`);
+    console.log(`Output Amount: ${fillAmount}`);
   } else {
     console.log(`\n=== Swap Fill Failed ===`);
     console.log(`Error: ${result.error}`);
