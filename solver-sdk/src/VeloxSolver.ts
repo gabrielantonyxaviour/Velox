@@ -770,6 +770,8 @@ export class VeloxSolver extends EventEmitter {
 
   private async pollIntents(callback: (record: IntentRecord) => void): Promise<void> {
     const lastSeen = new Set<number>();
+    // Track scheduled intents (TWAP/DCA) that need periodic re-checking
+    const scheduledIntents = new Set<number>();
 
     if (this.skipExistingOnStartup) {
       try {
@@ -777,6 +779,10 @@ export class VeloxSolver extends EventEmitter {
         console.log(`Skipping ${existingIntents.length} existing active intents...`);
         for (const record of existingIntents) {
           lastSeen.add(record.id);
+          // Track existing scheduled intents for re-checking
+          if (record.intent.type === IntentType.TWAP || record.intent.type === IntentType.DCA) {
+            scheduledIntents.add(record.id);
+          }
         }
       } catch (error) {
         this.emit('error', error);
@@ -788,9 +794,29 @@ export class VeloxSolver extends EventEmitter {
         const intents = await this.getActiveIntents();
 
         for (const record of intents) {
+          const isScheduled = record.intent.type === IntentType.TWAP || record.intent.type === IntentType.DCA;
+
           if (!lastSeen.has(record.id)) {
+            // New intent - process it
             callback(record);
             lastSeen.add(record.id);
+            if (isScheduled) {
+              scheduledIntents.add(record.id);
+            }
+          } else if (isScheduled && scheduledIntents.has(record.id)) {
+            // Re-check scheduled intents on every poll cycle
+            // The callback handler will check if the next chunk is ready
+            callback(record);
+          }
+        }
+
+        // Clean up completed/cancelled scheduled intents
+        const scheduledArray: number[] = Array.from(scheduledIntents);
+        for (let i = 0; i < scheduledArray.length; i++) {
+          const id = scheduledArray[i]!;
+          const stillActive = intents.find(r => r.id === id);
+          if (!stillActive) {
+            scheduledIntents.delete(id);
           }
         }
       } catch (error) {

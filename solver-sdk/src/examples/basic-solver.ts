@@ -136,17 +136,30 @@ async function main() {
     console.error('\n  ❌ Solver error:', error.message);
   });
 
+  // Track intents we've already seen (for less verbose logging on re-checks)
+  const seenIntents = new Set<number>();
+
   // Listen for new intents - validates registration before starting
   await solver.startIntentStream(async (record: IntentRecord) => {
-    console.log(`\n=== New Intent Detected ===`);
-    console.log(`ID: ${record.id}`);
-    console.log(`Type: ${record.intent.type}`);
-    console.log(`User: ${record.user}`);
-    console.log(`Status: ${record.status}`);
+    const isFirstSeen = !seenIntents.has(record.id);
+    const isScheduled = record.intent.type === IntentType.TWAP || record.intent.type === IntentType.DCA;
+
+    if (isFirstSeen) {
+      seenIntents.add(record.id);
+      console.log(`\n=== New Intent Detected ===`);
+      console.log(`ID: ${record.id}`);
+      console.log(`Type: ${record.intent.type}`);
+      console.log(`User: ${record.user}`);
+      console.log(`Status: ${record.status}`);
+    }
 
     // Check if we can fill this intent
     if (record.status !== IntentStatus.ACTIVE) {
-      console.log(`Skipping - intent status is ${record.status}`);
+      if (isFirstSeen) {
+        console.log(`Skipping - intent status is ${record.status}`);
+      }
+      // Remove from seen if no longer active (completed/cancelled)
+      seenIntents.delete(record.id);
       return;
     }
 
@@ -156,9 +169,9 @@ async function main() {
       } else if (record.intent.type === IntentType.LIMIT_ORDER) {
         await handleLimitOrderIntent(solver, record);
       } else if (record.intent.type === IntentType.DCA) {
-        await handleDCAIntent(solver, record);
+        await handleDCAIntent(solver, record, isFirstSeen);
       } else if (record.intent.type === IntentType.TWAP) {
-        await handleTWAPIntent(solver, record);
+        await handleTWAPIntent(solver, record, isFirstSeen);
       } else {
         console.log(`Skipping - unsupported intent type: ${record.intent.type}`);
       }
@@ -443,22 +456,30 @@ async function handleLimitOrderIntent(solver: VeloxSolver, record: IntentRecord)
   }
 }
 
-async function handleDCAIntent(solver: VeloxSolver, record: IntentRecord): Promise<void> {
+async function handleDCAIntent(solver: VeloxSolver, record: IntentRecord, isFirstSeen: boolean = true): Promise<void> {
   const intent = record.intent;
 
-  console.log(`Processing DCA intent...`);
-  console.log(`  Amount per Period: ${intent.amountPerPeriod}`);
-  console.log(`  Total Periods: ${intent.totalPeriods}`);
-  console.log(`  Interval: ${intent.intervalSeconds}s`);
-  console.log(`  Periods executed: ${record.chunksExecuted}/${intent.totalPeriods}`);
+  if (isFirstSeen) {
+    console.log(`Processing DCA intent...`);
+    console.log(`  Amount per Period: ${intent.amountPerPeriod}`);
+    console.log(`  Total Periods: ${intent.totalPeriods}`);
+    console.log(`  Interval: ${intent.intervalSeconds}s`);
+    console.log(`  Periods executed: ${record.chunksExecuted}/${intent.totalPeriods}`);
+  }
 
   // Check if next period is ready
   const isReady = isNextChunkReady(record);
   if (!isReady) {
-    const nextTime = new Date(record.nextExecution * 1000).toISOString();
-    console.log(`Skipping - next period not ready until ${nextTime}`);
+    if (isFirstSeen) {
+      const nextTime = new Date(record.nextExecution * 1000).toISOString();
+      console.log(`Skipping - next period not ready until ${nextTime}`);
+    }
     return;
   }
+
+  // Log when we're actually processing a period (either first time or re-check)
+  console.log(`\n=== DCA Period Ready (Intent #${record.id}) ===`);
+  console.log(`  Periods executed: ${record.chunksExecuted}/${intent.totalPeriods}`);
 
   // Check if all periods are complete
   const remaining = getRemainingChunks(record);
@@ -495,23 +516,31 @@ async function handleDCAIntent(solver: VeloxSolver, record: IntentRecord): Promi
   }
 }
 
-async function handleTWAPIntent(solver: VeloxSolver, record: IntentRecord): Promise<void> {
+async function handleTWAPIntent(solver: VeloxSolver, record: IntentRecord, isFirstSeen: boolean = true): Promise<void> {
   const intent = record.intent;
 
-  console.log(`Processing TWAP intent...`);
-  console.log(`  Total Amount: ${intent.totalAmount}`);
-  console.log(`  Num Chunks: ${intent.numChunks}`);
-  console.log(`  Interval: ${intent.intervalSeconds}s`);
-  console.log(`  Max Slippage: ${intent.maxSlippageBps}bps`);
-  console.log(`  Chunks executed: ${record.chunksExecuted}/${intent.numChunks}`);
+  if (isFirstSeen) {
+    console.log(`Processing TWAP intent...`);
+    console.log(`  Total Amount: ${intent.totalAmount}`);
+    console.log(`  Num Chunks: ${intent.numChunks}`);
+    console.log(`  Interval: ${intent.intervalSeconds}s`);
+    console.log(`  Max Slippage: ${intent.maxSlippageBps}bps`);
+    console.log(`  Chunks executed: ${record.chunksExecuted}/${intent.numChunks}`);
+  }
 
   // Check if next chunk is ready
   const isReady = isNextChunkReady(record);
   if (!isReady) {
-    const nextTime = new Date(record.nextExecution * 1000).toISOString();
-    console.log(`Skipping - next chunk not ready until ${nextTime}`);
+    if (isFirstSeen) {
+      const nextTime = new Date(record.nextExecution * 1000).toISOString();
+      console.log(`Skipping - next chunk not ready until ${nextTime}`);
+    }
     return;
   }
+
+  // Log when we're actually processing a chunk (either first time or re-check)
+  console.log(`\n=== TWAP Chunk Ready (Intent #${record.id}) ===`);
+  console.log(`  Chunks executed: ${record.chunksExecuted}/${intent.numChunks}`);
 
   // Check if all chunks are complete
   const remaining = getRemainingChunks(record);
