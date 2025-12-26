@@ -104,7 +104,7 @@ export function AuctionIntentRow({ intent, onCancel, onClick, isCancelling }: Au
               </span>
             )}
             {hasWinner && (
-              <span className="flex items-center gap-1 text-green-400">
+              <span className="flex items-center gap-1 text-primary">
                 <Trophy className="h-3 w-3" />
                 {winnerShort}
               </span>

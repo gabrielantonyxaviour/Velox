@@ -85,8 +85,7 @@ export function createLimitOrderDetails(
   inputAmount: string,
   outputAmount: string,
   limitPrice: string,
-  expiry: number,
-  partialFillAllowed: boolean
+  expiry: number
 ): TransactionDetails {
   return {
     type: 'limit_order',
@@ -96,7 +95,6 @@ export function createLimitOrderDetails(
     outputAmount,
     limitPrice,
     expiry,
-    partialFillAllowed,
   };
 }
 

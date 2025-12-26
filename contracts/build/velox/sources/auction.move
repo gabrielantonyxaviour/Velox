@@ -72,6 +72,14 @@ module velox::auction {
         let bids = types::get_sealed_bid_bids(&auction);
         assert!(!has_solver_bid(&bids, solver_addr), errors::auction_in_progress());
 
+        // Get output token from intent
+        let intent = types::get_intent_ref(&record);
+        let output_token = types::get_output_token(intent);
+
+        // Escrow solver's output tokens (they must have the tokens to bid)
+        submission::escrow_bid(solver, registry_addr, intent_id, output_token, output_amount);
+
+        // Record the bid
         let bid = types::new_bid(solver_addr, output_amount, now);
         submission::add_bid_to_intent(registry_addr, intent_id, bid);
 
@@ -99,6 +107,13 @@ module velox::auction {
         let bids = types::get_sealed_bid_bids(&auction);
         let bid_count = vector::length(&bids);
 
+        // Get intent details for settlement
+        let intent = types::get_intent_ref(&record);
+        let input_token = types::get_input_token(intent);
+        let output_token = types::get_output_token(intent);
+        let user = types::get_user(&record);
+        let input_amount = types::get_escrow_remaining(&record);
+
         if (bid_count == 0) {
             submission::update_intent_auction(registry_addr, intent_id, types::auction_failed());
             event::emit(AuctionFailed { intent_id, reason: 0, failed_at: now });
@@ -106,17 +121,45 @@ module velox::auction {
         };
 
         let (winner, winning_bid) = find_best_bid(&bids);
-        let fill_deadline = now + DEFAULT_FILL_DEADLINE;
 
+        // Refund all losing bidders
+        let i = 0;
+        while (i < bid_count) {
+            let bid = vector::borrow(&bids, i);
+            let bidder = types::get_bid_solver(bid);
+            if (bidder != winner) {
+                // Refund this bidder's escrowed output tokens
+                submission::refund_bid_escrow(registry_addr, intent_id, bidder, output_token);
+            };
+            i = i + 1;
+        };
+
+        // Settle the winner: their escrowed output goes to user, user's input goes to winner
+        submission::settle_sealed_bid_winner(
+            registry_addr,
+            intent_id,
+            winner,
+            user,
+            input_token,
+            output_token,
+            input_amount
+        );
+
+        // Update intent to filled status
         submission::update_intent_auction(
             registry_addr,
             intent_id,
-            types::new_sealed_bid_completed(winner, winning_bid, fill_deadline)
+            types::new_sealed_bid_completed(winner, winning_bid, now)
         );
+        submission::update_intent_status(registry_addr, intent_id, types::status_filled());
+
+        // Record the fill
+        let fill = types::new_fill(winner, input_amount, winning_bid, now);
+        submission::record_fill(registry_addr, intent_id, fill, 0, winning_bid);
 
         event::emit(SealedBidCompleted {
             intent_id, winner, winning_bid,
-            total_bids: bid_count, fill_deadline
+            total_bids: bid_count, fill_deadline: now
         });
     }
 

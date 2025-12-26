@@ -24,7 +24,9 @@ module velox::submission {
         next_intent_id: u64,
         intents: SmartTable<u64, IntentRecord>,
         user_intents: SmartTable<address, vector<u64>>,
-        extend_ref: ExtendRef
+        extend_ref: ExtendRef,
+        // Bid escrows: intent_id -> (solver -> escrowed_amount)
+        bid_escrows: SmartTable<u64, SmartTable<address, u64>>
     }
 
     // ============ Events ============
@@ -62,7 +64,8 @@ module velox::submission {
             next_intent_id: 0,
             intents: smart_table::new(),
             user_intents: smart_table::new(),
-            extend_ref
+            extend_ref,
+            bid_escrows: smart_table::new()
         });
     }
 
@@ -484,5 +487,123 @@ module velox::submission {
         let escrow_signer = get_escrow_signer(registry);
         let token_obj = object::address_to_object<Metadata>(token);
         primary_fungible_store::transfer(&escrow_signer, token_obj, recipient, amount);
+    }
+
+    // ============ Bid Escrow Functions ============
+
+    /// Escrow solver's output tokens when placing a bid
+    public(package) fun escrow_bid(
+        solver: &signer,
+        registry_addr: address,
+        intent_id: u64,
+        output_token: address,
+        output_amount: u64
+    ) acquires IntentRegistry {
+        let solver_addr = signer::address_of(solver);
+        let registry = borrow_global_mut<IntentRegistry>(registry_addr);
+        let escrow_addr = get_escrow_address(registry);
+
+        // Initialize bid escrow table for this intent if not exists
+        if (!smart_table::contains(&registry.bid_escrows, intent_id)) {
+            smart_table::add(&mut registry.bid_escrows, intent_id, smart_table::new());
+        };
+
+        // Store the escrowed amount
+        let intent_escrows = smart_table::borrow_mut(&mut registry.bid_escrows, intent_id);
+        assert!(!smart_table::contains(intent_escrows, solver_addr), errors::solver_already_bid());
+        smart_table::add(intent_escrows, solver_addr, output_amount);
+
+        // Transfer output tokens from solver to escrow
+        let token_obj = object::address_to_object<Metadata>(output_token);
+        primary_fungible_store::transfer(solver, token_obj, escrow_addr, output_amount);
+    }
+
+    /// Get escrowed amount for a solver's bid
+    public(package) fun get_bid_escrow_amount(
+        registry_addr: address,
+        intent_id: u64,
+        solver: address
+    ): u64 acquires IntentRegistry {
+        let registry = borrow_global<IntentRegistry>(registry_addr);
+        if (!smart_table::contains(&registry.bid_escrows, intent_id)) {
+            return 0
+        };
+        let intent_escrows = smart_table::borrow(&registry.bid_escrows, intent_id);
+        if (!smart_table::contains(intent_escrows, solver)) {
+            return 0
+        };
+        *smart_table::borrow(intent_escrows, solver)
+    }
+
+    /// Refund a losing solver's escrowed bid
+    public(package) fun refund_bid_escrow(
+        registry_addr: address,
+        intent_id: u64,
+        solver: address,
+        output_token: address
+    ) acquires IntentRegistry {
+        let registry = borrow_global_mut<IntentRegistry>(registry_addr);
+
+        if (!smart_table::contains(&registry.bid_escrows, intent_id)) {
+            return
+        };
+
+        let intent_escrows = smart_table::borrow_mut(&mut registry.bid_escrows, intent_id);
+        if (!smart_table::contains(intent_escrows, solver)) {
+            return
+        };
+
+        let amount = smart_table::remove(intent_escrows, solver);
+        if (amount > 0) {
+            let escrow_signer = get_escrow_signer(registry);
+            let token_obj = object::address_to_object<Metadata>(output_token);
+            primary_fungible_store::transfer(&escrow_signer, token_obj, solver, amount);
+        };
+    }
+
+    /// Transfer winner's escrowed output to user and user's input to winner
+    public(package) fun settle_sealed_bid_winner(
+        registry_addr: address,
+        intent_id: u64,
+        winner: address,
+        user: address,
+        input_token: address,
+        output_token: address,
+        input_amount: u64
+    ) acquires IntentRegistry {
+        let registry = borrow_global_mut<IntentRegistry>(registry_addr);
+
+        // Get winner's escrowed output amount
+        let output_amount = {
+            let intent_escrows = smart_table::borrow_mut(&mut registry.bid_escrows, intent_id);
+            smart_table::remove(intent_escrows, winner)
+        };
+
+        let escrow_signer = get_escrow_signer(registry);
+
+        // Transfer winner's escrowed output tokens to user
+        let output_obj = object::address_to_object<Metadata>(output_token);
+        primary_fungible_store::transfer(&escrow_signer, output_obj, user, output_amount);
+
+        // Transfer user's escrowed input tokens to winner
+        let input_obj = object::address_to_object<Metadata>(input_token);
+        primary_fungible_store::transfer(&escrow_signer, input_obj, winner, input_amount);
+    }
+
+    /// Get all solvers who bid on an intent (for refunding losers)
+    public(package) fun get_bid_solvers(
+        registry_addr: address,
+        intent_id: u64
+    ): vector<address> acquires IntentRegistry {
+        let registry = borrow_global<IntentRegistry>(registry_addr);
+        let solvers = vector::empty<address>();
+
+        if (!smart_table::contains(&registry.bid_escrows, intent_id)) {
+            return solvers
+        };
+
+        // Note: SmartTable doesn't support iteration directly
+        // We'll need to track solvers separately or use the bids from auction state
+        solvers
     }
 }

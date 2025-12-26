@@ -18,8 +18,18 @@ export interface VeloxTakerTransaction {
   created_at?: string;
 }
 
+export interface VeloxBidTransaction {
+  id?: number;
+  intent_id: string;
+  bid_tx_hash: string;
+  solver_address: string;
+  bid_amount?: string;
+  created_at?: string;
+}
+
 export interface IntentTransactions {
   intentId: string;
   makerTx?: VeloxMakerTransaction;
   takerTxs: VeloxTakerTransaction[];
+  bidTxs?: VeloxBidTransaction[];
 }

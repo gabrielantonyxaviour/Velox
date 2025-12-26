@@ -12,7 +12,7 @@ import {
   parseIntentType,
   parseAuctionType,
 } from './types';
-import { IntentTransactions, VeloxMakerTransaction, VeloxTakerTransaction } from '@/types/supabase';
+import { IntentTransactions, VeloxMakerTransaction, VeloxTakerTransaction, VeloxBidTransaction } from '@/types/supabase';
 
 // Helper to safely get string from unknown
 const safeGetString = (obj: Record<string, unknown> | undefined, key: string): string => {
@@ -325,6 +325,7 @@ export async function getTokenBalance(
 const transactionCache: Map<string, {
   makerTx?: VeloxMakerTransaction;
   takerTxs: VeloxTakerTransaction[];
+  bidTxs: VeloxBidTransaction[];
 }> = new Map();
 
 /**
@@ -335,14 +336,46 @@ export async function fetchIntentTransactions(intentIds: bigint[]): Promise<void
 
   try {
     const idsParam = intentIds.map(id => id.toString()).join(',');
+
+    // Fetch maker/taker transactions
     const res = await fetch(`/api/transactions?intent_ids=${idsParam}`);
     const result = await res.json();
+
+    // Fetch bid transactions for each intent
+    const bidPromises = intentIds.map(async (id) => {
+      try {
+        const bidRes = await fetch(`/api/transactions/bid?intent_id=${id.toString()}`);
+        const bidResult = await bidRes.json();
+        return { intentId: id.toString(), bids: bidResult.data || [] };
+      } catch {
+        return { intentId: id.toString(), bids: [] };
+      }
+    });
+    const bidResults = await Promise.all(bidPromises);
+
+    // Create a map of bid transactions by intent ID
+    const bidMap = new Map<string, VeloxBidTransaction[]>();
+    for (const { intentId, bids } of bidResults) {
+      bidMap.set(intentId, bids);
+    }
 
     if (result.data) {
       for (const tx of result.data as IntentTransactions[]) {
         transactionCache.set(tx.intentId, {
           makerTx: tx.makerTx,
           takerTxs: tx.takerTxs,
+          bidTxs: bidMap.get(tx.intentId) || [],
+        });
+      }
+    }
+
+    // Also set bid data for intents not in result.data
+    for (const [intentId, bids] of bidMap) {
+      if (!transactionCache.has(intentId)) {
+        transactionCache.set(intentId, {
+          makerTx: undefined,
+          takerTxs: [],
+          bidTxs: bids,
         });
       }
     }
@@ -385,6 +418,7 @@ export async function storeMakerTransaction(
 export function getIntentTransactionData(intentId: bigint): {
   makerTxHash?: string;
   takerTxHashes: { txHash: string; solver: string; fillAmount?: string }[];
+  bidTxHashes: { txHash: string; solver: string; bidAmount?: string }[];
 } | undefined {
   const cached = transactionCache.get(intentId.toString());
   if (!cached) return undefined;
@@ -395,6 +429,11 @@ export function getIntentTransactionData(intentId: bigint): {
       txHash: t.taker_tx_hash,
       solver: t.solver_address,
       fillAmount: t.fill_amount,
+    })),
+    bidTxHashes: cached.bidTxs.map(b => ({
+      txHash: b.bid_tx_hash,
+      solver: b.solver_address,
+      bidAmount: b.bid_amount,
     })),
   };
 }

@@ -109,10 +109,32 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
           };
         });
 
+        // Enrich auction bids with txHash from Supabase bid transactions
+        // OR create bids from Supabase if on-chain bids are empty (e.g., after auction completed)
+        const enrichedAuction = { ...intent.auction };
+        if (txData?.bidTxHashes && txData.bidTxHashes.length > 0) {
+          if (enrichedAuction.bids && enrichedAuction.bids.length > 0) {
+            // Enrich existing on-chain bids with txHash
+            enrichedAuction.bids = enrichedAuction.bids.map((bid) => {
+              const bidTx = txData.bidTxHashes.find(b => b.solver === bid.solver);
+              return { ...bid, txHash: bidTx?.txHash };
+            });
+          } else {
+            // Create bids from Supabase data (when on-chain bid history not available)
+            enrichedAuction.bids = txData.bidTxHashes.map((bidTx) => ({
+              solver: bidTx.solver,
+              outputAmount: BigInt(bidTx.bidAmount || '0'),
+              submittedAt: Math.floor(Date.now() / 1000), // Approximate
+              txHash: bidTx.txHash,
+            }));
+          }
+        }
+
         return {
           ...intent,
           submitTxHash,
           fills: enrichedFills,
+          auction: enrichedAuction,
         };
       });
 

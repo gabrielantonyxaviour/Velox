@@ -8,7 +8,8 @@ import {
   isAuctionActive,
 } from '@/app/lib/velox/types';
 import { Separator } from '../ui/separator';
-import { Timer, Trophy, Users, Clock, Medal, Info } from 'lucide-react';
+import { Timer, Trophy, Users, Clock, Medal, Info, ExternalLink } from 'lucide-react';
+import { getExplorerUrl } from '@/app/lib/aptos';
 
 interface SealedBidAuctionSectionProps {
   intent: IntentRecord;
@@ -162,12 +163,25 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className={`font-bold ${isWinner ? 'text-primary' : ''}`}>
-                          {formatAmount(bid.outputAmount)}
-                        </p>
-                        {isWinner && (
-                          <span className="text-xs text-primary">Winner</span>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <p className={`font-bold ${isWinner ? 'text-primary' : ''}`}>
+                            {formatAmount(bid.outputAmount)}
+                          </p>
+                          {isWinner && (
+                            <span className="text-xs text-primary">Winner</span>
+                          )}
+                        </div>
+                        {bid.txHash && (
+                          <a
+                            href={getExplorerUrl(bid.txHash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 rounded hover:bg-primary/20 transition-colors"
+                            title="View transaction on explorer"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                          </a>
                         )}
                       </div>
                     </div>

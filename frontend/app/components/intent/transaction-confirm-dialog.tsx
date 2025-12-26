@@ -30,7 +30,6 @@ export interface TransactionDetails {
   // Limit order specific
   limitPrice?: string;
   expiry?: number;
-  partialFillAllowed?: boolean;
   // DCA specific
   amountPerPeriod?: string;
   totalPeriods?: number;
@@ -241,10 +240,6 @@ export function TransactionConfirmDialog({
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Expiry</span>
                   <span>{details.expiry ? formatDeadline(details.expiry) : '--'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Partial Fill</span>
-                  <span>{details.partialFillAllowed ? 'Allowed' : 'Not Allowed'}</span>
                 </div>
               </>
             )}

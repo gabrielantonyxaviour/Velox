@@ -20,17 +20,17 @@ interface TWAPFormProps {
 }
 
 const CHUNK_OPTIONS = [
+  { label: '2', value: 2 },
   { label: '5', value: 5 },
-  { label: '10', value: 10 },
+  { label: '15', value: 15 },
   { label: '20', value: 20 },
-  { label: '50', value: 50 },
 ];
 
 const INTERVAL_OPTIONS = [
-  { label: '5m', value: 5 * 60, display: '5 minutes' },
-  { label: '15m', value: 15 * 60, display: '15 minutes' },
+  { label: '10s', value: 10, display: '10 seconds' },
+  { label: '1m', value: 60, display: '1 minute' },
+  { label: '10m', value: 10 * 60, display: '10 minutes' },
   { label: '1h', value: 60 * 60, display: '1 hour' },
-  { label: '4h', value: 4 * 60 * 60, display: '4 hours' },
 ];
 
 const SLIPPAGE_OPTIONS = [0.1, 0.5, 1.0, 2.0];
@@ -42,8 +42,8 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
   const [inputToken, setInputToken] = useState<Token | null>(null);
   const [outputToken, setOutputToken] = useState<Token | null>(null);
   const [totalAmount, setTotalAmount] = useState('');
-  const [numChunks, setNumChunks] = useState(10);
-  const [intervalSeconds, setIntervalSeconds] = useState(INTERVAL_OPTIONS[2].value);
+  const [numChunks, setNumChunks] = useState(5);
+  const [intervalSeconds, setIntervalSeconds] = useState(INTERVAL_OPTIONS[3].value);
   const [maxSlippageBps, setMaxSlippageBps] = useState(50); // 0.5%
   const [inputBalance, setInputBalance] = useState<string>('');
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});

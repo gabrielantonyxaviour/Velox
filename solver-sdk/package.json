@@ -17,7 +17,6 @@
     "dev": "ts-node-dev -r dotenv/config --respawn src/examples/basic-solver.ts",
     "dev:advanced": "ts-node-dev -r dotenv/config --respawn src/examples/advanced-solver.ts",
     "dev:dutch": "ts-node-dev -r dotenv/config --respawn src/examples/dutch-solver.ts",
-    "master": "ts-node -r dotenv/config src/scripts/master-solver.ts",
     "start": "node -r dotenv/config dist/cli/index.js start",
     "solver": "ts-node -r dotenv/config src/cli/index.ts",
     "solver:start": "ts-node -r dotenv/config src/cli/index.ts start",

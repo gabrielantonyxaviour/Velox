@@ -28,6 +28,7 @@ module velox::errors {
     const ESOLVER_NOT_WINNER: u64 = 24;
     const ECOOLDOWN_NOT_COMPLETE: u64 = 25;
     const ENO_PENDING_UNSTAKE: u64 = 26;
+    const ESOLVER_ALREADY_BID: u64 = 27;
 
     // ============ Authorization Errors (30-39) ============
     const ENOT_AUTHORIZED: u64 = 30;
@@ -99,6 +100,7 @@ module velox::errors {
     public fun solver_not_winner(): u64 { ESOLVER_NOT_WINNER }
     public fun cooldown_not_complete(): u64 { ECOOLDOWN_NOT_COMPLETE }
     public fun no_pending_unstake(): u64 { ENO_PENDING_UNSTAKE }
+    public fun solver_already_bid(): u64 { ESOLVER_ALREADY_BID }
 
     // ============ Authorization Error Getters ============
     public fun not_authorized(): u64 { ENOT_AUTHORIZED }

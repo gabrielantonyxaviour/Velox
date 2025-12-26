@@ -5,7 +5,7 @@ const INDEXER_URLS = [
   'https://hasura.testnet.movementnetwork.xyz/v1/graphql',
   'https://indexer.testnet.movementnetwork.xyz/v1/graphql',
 ];
-const VELOX_ADDRESS = '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb';
+const VELOX_ADDRESS = '0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470';
 const TIMEOUT_MS = 45000; // 45 second timeout per indexer (Movement indexer is slow)
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {

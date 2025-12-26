@@ -371,8 +371,8 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
             )}
           </div>
 
-          {/* Transaction Links - Always show for filled intents */}
-          {(isFilled || intent.fills.length > 0 || intent.submitTxHash) && (
+          {/* Transaction Links - Always show for filled intents and auctions */}
+          {(isFilled || intent.fills.length > 0 || intent.submitTxHash || isAuction) && (
             <>
               <Separator />
               <div className="space-y-2">

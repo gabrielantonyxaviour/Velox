@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Label } from '@/app/components/ui/label';
-import { Switch } from '@/app/components/ui/switch';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
 import { PriceInput } from './price-input';
@@ -41,7 +40,6 @@ export function LimitForm({ onSuccess, onError }: LimitFormProps) {
   const [inputAmount, setInputAmount] = useState('');
   const [limitPrice, setLimitPrice] = useState('');
   const [expiry, setExpiry] = useState(EXPIRY_OPTIONS[1].value);
-  const [partialFill, setPartialFill] = useState(true);
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const [inputBalance, setInputBalance] = useState<string>('');
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
@@ -138,8 +136,7 @@ export function LimitForm({ onSuccess, onError }: LimitFormProps) {
       inputAmount,
       expectedOutput || '0',
       limitPrice,
-      expiry,
-      partialFill
+      expiry
     );
     txConfirm.openConfirmation(details);
   };
@@ -261,20 +258,6 @@ export function LimitForm({ onSuccess, onError }: LimitFormProps) {
               </Button>
             ))}
           </div>
-        </div>
-
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border">
-          <div className="space-y-0.5">
-            <Label className="text-sm font-medium">Allow partial fill</Label>
-            <p className="text-xs text-muted-foreground">
-              Order can be filled in multiple transactions
-            </p>
-          </div>
-          <Switch
-            checked={partialFill}
-            onCheckedChange={setPartialFill}
-            disabled={isLoading}
-          />
         </div>
 
         {/* Slippage Selector */}

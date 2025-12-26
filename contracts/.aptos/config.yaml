@@ -7,3 +7,10 @@ profiles:
     account: 44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb
     rest_url: "https://testnet.movementnetwork.xyz/v1"
     faucet_url: "https://faucet.testnet.movementnetwork.xyz"
+  velox-v2:
+    network: Testnet
+    private_key: ed25519-priv-0x79db8b16e1edc5e2db01792a4cdeee63cbe5ac541dce22a8b373b39520f6049e
+    public_key: ed25519-pub-0xfd9b0e09002e7a37a69bf825a4f81227eea9764dbb3a2cc571b890d80c428c16
+    account: 94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470
+    rest_url: "https://testnet.movementnetwork.xyz"
+    faucet_url: "https://faucet.testnet.movementnetwork.xyz"

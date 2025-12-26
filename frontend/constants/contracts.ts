@@ -1,5 +1,5 @@
 // Velox contract addresses on Movement Bardock Testnet
-export const VELOX_ADDRESS = '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb';
+export const VELOX_ADDRESS = '0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470';
 export const REGISTRY_ADDR = VELOX_ADDRESS; // Registry is at same address
 
 // Token metadata addresses (fungible assets)

@@ -21,17 +21,17 @@ interface DCAFormProps {
 }
 
 const PERIOD_OPTIONS = [
+  { label: '2', value: 2 },
   { label: '4', value: 4 },
-  { label: '12', value: 12 },
-  { label: '24', value: 24 },
-  { label: '52', value: 52 },
+  { label: '6', value: 6 },
+  { label: '10', value: 10 },
 ];
 
 const FREQUENCY_OPTIONS = [
-  { label: 'Daily', value: 1, seconds: 24 * 60 * 60 },
-  { label: 'Weekly', value: 7, seconds: 7 * 24 * 60 * 60 },
-  { label: 'Bi-weekly', value: 14, seconds: 14 * 24 * 60 * 60 },
-  { label: 'Monthly', value: 30, seconds: 30 * 24 * 60 * 60 },
+  { label: '15s', value: 15, display: '15 seconds' },
+  { label: '30s', value: 30, display: '30 seconds' },
+  { label: '1m', value: 60, display: '1 minute' },
+  { label: '5m', value: 5 * 60, display: '5 minutes' },
 ];
 
 const DEFAULT_SLIPPAGE = 0.5;
@@ -43,8 +43,8 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
   const [inputToken, setInputToken] = useState<Token | null>(null);
   const [outputToken, setOutputToken] = useState<Token | null>(null);
   const [amountPerPeriod, setAmountPerPeriod] = useState('');
-  const [totalPeriods, setTotalPeriods] = useState(12);
-  const [intervalDays, setIntervalDays] = useState(7);
+  const [totalPeriods, setTotalPeriods] = useState(4);
+  const [intervalSeconds, setIntervalSeconds] = useState(60);
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const [inputBalance, setInputBalance] = useState<string>('');
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
@@ -87,7 +87,14 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
     ? (parseFloat(amountPerPeriod) * totalPeriods).toFixed(2)
     : '0';
 
-  const totalDurationDays = totalPeriods * intervalDays;
+  const totalDurationSeconds = totalPeriods * intervalSeconds;
+
+  const formatDuration = (seconds: number): string => {
+    if (seconds < 60) return `${seconds} seconds`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes`;
+    if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} hours`;
+    return `${(seconds / 86400).toFixed(1)} days`;
+  };
 
   const validateForm = (): string | null => {
     if (!inputToken) return 'Select input token';
@@ -112,7 +119,6 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
     setError(null);
 
     // Open confirmation dialog
-    const intervalSeconds = intervalDays * 24 * 60 * 60;
     const details = createDCADetails(
       inputToken,
       outputToken,
@@ -131,7 +137,6 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
 
     try {
       const amount = BigInt(Math.floor(parseFloat(amountPerPeriod) * Math.pow(10, inputToken.decimals)));
-      const intervalSeconds = intervalDays * 24 * 60 * 60;
 
       let txHash: string;
 
@@ -243,9 +248,9 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
               <Button
                 key={option.value}
                 type="button"
-                variant={intervalDays === option.value ? 'default' : 'outline'}
+                variant={intervalSeconds === option.value ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setIntervalDays(option.value)}
+                onClick={() => setIntervalSeconds(option.value)}
                 disabled={isLoading}
                 className="flex-1 min-w-[70px]"
               >
@@ -263,7 +268,7 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Duration:</span>
-            <span>{totalDurationDays} days</span>
+            <span>{formatDuration(totalDurationSeconds)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Next buy:</span>

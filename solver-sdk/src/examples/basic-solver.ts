@@ -3,6 +3,71 @@ import { VeloxSolver } from '../VeloxSolver';
 import { IntentRecord, IntentType, IntentStatus, AuctionType, isNextChunkReady, getRemainingChunks } from '../types/intent';
 import { printVeloxLogo, printSection, printKeyValue, printSuccess, printLoadingAnimation } from '../utils/cliStyle';
 
+// Helper to record bid transaction to API
+async function recordBidTransaction(
+  intentId: number,
+  bidTxHash: string,
+  solverAddress: string,
+  bidAmount: bigint
+): Promise<void> {
+  const apiUrl = process.env.VELOX_API_URL;
+  if (!apiUrl) {
+    console.log(`[Bid TX] VELOX_API_URL not configured - bid not recorded`);
+    return;
+  }
+
+  try {
+    const response = await fetch(`${apiUrl}/api/transactions/bid`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intent_id: intentId.toString(),
+        bid_tx_hash: bidTxHash,
+        solver_address: solverAddress,
+        bid_amount: bidAmount.toString(),
+      }),
+    });
+
+    if (response.ok) {
+      console.log(`[Bid TX] Recorded bid transaction to API`);
+    } else {
+      const data = await response.json();
+      console.log(`[Bid TX] Failed to record: ${data.error}`);
+    }
+  } catch (error) {
+    console.error(`[Bid TX] API call failed:`, (error as Error).message);
+  }
+}
+
+// Helper to call the complete-auction API
+async function triggerAuctionCompletion(intentId: number): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  const apiUrl = process.env.VELOX_API_URL;
+  if (!apiUrl) {
+    return { success: false, error: 'VELOX_API_URL not configured' };
+  }
+
+  try {
+    console.log(`Triggering auction completion via API...`);
+    const response = await fetch(`${apiUrl}/api/complete-auction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intentId: Number(intentId) }),
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      console.log(`Auction completion triggered! TX: ${data.txHash}`);
+      return { success: true, txHash: data.txHash };
+    } else {
+      console.log(`Auction completion failed: ${data.error}`);
+      return { success: false, error: data.error };
+    }
+  } catch (error) {
+    console.error(`API call failed:`, (error as Error).message);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
 async function main() {
   const shinamiNodeKey = process.env.SHINAMI_KEY;
   const solverPrivateKey = process.env.SOLVER_PRIVATE_KEY;
@@ -233,9 +298,18 @@ async function submitSwapBid(solver: VeloxSolver, record: IntentRecord, outputAm
   const now = Date.now() / 1000;
 
   if (now >= endTime) {
-    console.log(`Auction period ended - cannot submit bid`);
+    console.log(`Auction period ended - triggering completion...`);
     console.log(`  Auction ended at: ${new Date(endTime * 1000).toISOString()}`);
-    console.log(`  Waiting for auction completion...`);
+
+    // Trigger auction completion via API
+    const completionResult = await triggerAuctionCompletion(record.id);
+    if (completionResult.success) {
+      console.log(`Auction completed! Now attempting to fill as winner...`);
+      // Wait a moment for the chain to update
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Try to fill as winner
+      await fillSwapAsWinner(solver, record, outputAmount);
+    }
     return;
   }
 
@@ -251,6 +325,22 @@ async function submitSwapBid(solver: VeloxSolver, record: IntentRecord, outputAm
     console.log(`TX Hash: ${result.txHash}`);
     console.log(`Bid Output Amount: ${outputAmount}`);
     console.log(`Auction ends: ${new Date(endTime * 1000).toISOString()}`);
+
+    // Record bid transaction to API
+    const solverStats = await solver.getSolverStats();
+    await recordBidTransaction(record.id, result.txHash!, solverStats.address, outputAmount);
+
+    // If auction ends very soon, wait and trigger completion
+    if (timeRemaining <= 5) {
+      console.log(`Auction ending soon, waiting to trigger completion...`);
+      await new Promise(resolve => setTimeout(resolve, (timeRemaining + 1) * 1000));
+      const completionResult = await triggerAuctionCompletion(record.id);
+      if (completionResult.success) {
+        console.log(`Auction completed! Now attempting to fill as winner...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await fillSwapAsWinner(solver, record, outputAmount);
+      }
+    }
   } else {
     console.log(`\n=== Bid Submission Failed ===`);
     console.log(`Error: ${result.error}`);

@@ -47,6 +47,8 @@ export interface Bid {
   solver: string;
   outputAmount: bigint;
   submittedAt: number;
+  // Added by indexer/API
+  txHash?: string;
 }
 
 // Auction state - matches contract AuctionState enum
