@@ -398,29 +398,23 @@ function parseEventsFromTransactions(transactions: Transaction[], intentIds: big
 
 /**
  * Fetch IntentCreated and IntentFilled events for given intent IDs
- * Uses the Movement GraphQL indexer for reliable event querying
+ * Uses the API route to proxy GraphQL requests to the Movement indexer
  */
 export async function fetchIntentEvents(intentIds: bigint[], userAddress?: string): Promise<void> {
   if (intentIds.length === 0) return;
 
   try {
-    // Query IntentCreated events from indexer using _like for flexible matching
-    const createdQuery = `{ events(where: {type: {_like: "%${VELOX_ADDRESS}%IntentCreated%"}}, limit: 100) { transaction_version data } }`;
-
-    // Query IntentFilled events from indexer using _like for flexible matching
-    const filledQuery = `{ events(where: {type: {_like: "%${VELOX_ADDRESS}%IntentFilled%"}}, limit: 100) { transaction_version data } }`;
-
-    const fetchWithTimeout = async (query: string) => {
+    // Use API route to proxy GraphQL requests (avoids CORS and other browser issues)
+    const fetchWithTimeout = async (eventType: string) => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 4000);
       try {
-        const res = await fetch(INDEXER_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query }),
+        const res = await fetch(`/api/indexer?eventType=${eventType}`, {
+          method: 'GET',
           signal: controller.signal,
         });
-        return await res.json();
+        const result = await res.json();
+        return result.data || { data: { events: [] } };
       } catch {
         return { data: { events: [] } };
       } finally {
@@ -428,11 +422,11 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
       }
     };
 
-    console.log('[Velox] Sending queries:', { createdQuery, filledQuery });
+    console.log('[Velox] Fetching events via API route...');
 
     const [createdRes, filledRes] = await Promise.all([
-      fetchWithTimeout(createdQuery),
-      fetchWithTimeout(filledQuery),
+      fetchWithTimeout('IntentCreated'),
+      fetchWithTimeout('IntentFilled'),
     ]);
 
     console.log('[Velox] Raw responses:', { createdRes, filledRes });
