@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk';
 
-const VELOX_ADDRESS = process.env.VELOX_ADDRESS || '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
+const VELOX_ADDRESS = process.env.VELOX_ADDRESS || '0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470';
 const RPC_URL = process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1';
-const SOLVER_ADDRESS = process.env.SOLVER_ADDRESS || '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
+const SOLVER_ADDRESS = process.env.SOLVER_ADDRESS || '0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470';
 
 const TOKEN_ADDRESSES = {
   tUSDC: '0xfb34c9c1600d86a9acdb351aaf6fddce6a0de7254bced08c38fcaf364e525297',

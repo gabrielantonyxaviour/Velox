@@ -9,7 +9,7 @@
 ### Key Addresses
 | Resource | Address |
 |----------|---------|
-| Velox Contract | `0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7` |
+| Velox Contract | `0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470` |
 | tUSDC | `0x194eede164d0a9ee0c8082ff82eebdf146b3936872c203cf9282cd54ea5287ce` |
 | tMOVE | `0x626598b71b290f416b9e906dc3dfff337bf0364b3bf53b0bbb6ffab1c0dc373b` |
 | Network | Movement Bardock Testnet (Chain ID: 250) |
@@ -34,7 +34,7 @@ npm install
 # Create .env file:
 cat > .env << 'EOF'
 RPC_URL=https://testnet.movementnetwork.xyz/v1
-VELOX_ADDRESS=0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7
+VELOX_ADDRESS=0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470
 SOLVER_PRIVATE_KEY=0x_YOUR_SOLVER_PRIVATE_KEY_HERE
 POLLING_INTERVAL=10000
 EOF
@@ -262,7 +262,7 @@ NEXT_PUBLIC_SHINAMI_NODE_KEY=your_key       # Optional, for sponsored txs
 ### Solver SDK (`solver-sdk/.env`)
 ```env
 RPC_URL=https://testnet.movementnetwork.xyz/v1
-VELOX_ADDRESS=0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7
+VELOX_ADDRESS=0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470
 SOLVER_PRIVATE_KEY=0x...
 POLLING_INTERVAL=10000
 SHINAMI_KEY=your_key                        # Optional, for reliability

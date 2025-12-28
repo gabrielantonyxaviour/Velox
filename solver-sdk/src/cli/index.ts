@@ -105,7 +105,7 @@ program
 RPC_URL=https://testnet.movementnetwork.xyz/v1
 
 # Velox contract address
-VELOX_ADDRESS=0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7
+VELOX_ADDRESS=0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470
 
 # Your registered solver wallet private key (hex format, with or without 0x prefix)
 # IMPORTANT: Register this wallet as a solver on the Velox UI first!

@@ -2,7 +2,7 @@
   "network": "movement-bardock-testnet",
   "rpc_url": "https://testnet.movementnetwork.xyz/v1",
   "explorer_url": "https://explorer.movementnetwork.xyz/?network=bardock+testnet",
-  "velox_address": "0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb",
+  "velox_address": "0x94d017d8d944702a976af2844bdf3534b946e712cad286610aef5969568ba470",
   "deployment_tx": "0xffbbf3b55bfbd24be05bf4c16e443a8f4b2d182667d53add400ba009398f69a4",
   "tokens": {
     "tUSDC": {
