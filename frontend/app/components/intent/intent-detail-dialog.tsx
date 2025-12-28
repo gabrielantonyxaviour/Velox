@@ -131,8 +131,10 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
   const outputDecimals = getTokenDecimals(intentData.outputToken);
   const totalAmount = getIntentTotalAmount(intentData);
 
-  // Scheduled intent progress
-  const totalChunks = intentData.numChunks ?? 0;
+  // Scheduled intent progress - DCA uses totalPeriods, TWAP uses numChunks
+  const totalChunks = intentData.type === 'dca'
+    ? (intentData.totalPeriods ?? 0)
+    : (intentData.numChunks ?? 0);
   const chunksExecuted = intent.chunksExecuted ?? 0;
   const progress = totalChunks > 0 ? (chunksExecuted / totalChunks) * 100 : 0;
   const isScheduledCompleted = totalChunks > 0 && chunksExecuted >= totalChunks;
