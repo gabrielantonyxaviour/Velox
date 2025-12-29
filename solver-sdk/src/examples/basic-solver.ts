@@ -68,6 +68,30 @@ async function triggerAuctionCompletion(intentId: number): Promise<{ success: bo
   }
 }
 
+// Track scheduled completions to avoid duplicates
+const scheduledCompletions = new Set<number>();
+
+// Schedule auction completion to run after delay (non-blocking)
+function scheduleAuctionCompletion(intentId: number, delayMs: number, callback: () => Promise<void>): void {
+  if (scheduledCompletions.has(intentId)) {
+    console.log(`[Scheduler] Completion already scheduled for intent #${intentId}`);
+    return;
+  }
+
+  scheduledCompletions.add(intentId);
+  console.log(`[Scheduler] Will complete auction #${intentId} in ${(delayMs / 1000).toFixed(0)}s`);
+
+  setTimeout(async () => {
+    try {
+      await callback();
+    } catch (error) {
+      console.error(`[Scheduler] Error completing auction #${intentId}:`, error);
+    } finally {
+      scheduledCompletions.delete(intentId);
+    }
+  }, delayMs);
+}
+
 async function main() {
   const shinamiNodeKey = process.env.SHINAMI_KEY;
   const solverPrivateKey = process.env.SOLVER_PRIVATE_KEY;
@@ -311,17 +335,16 @@ async function submitSwapBid(solver: VeloxSolver, record: IntentRecord, outputAm
   const now = Date.now() / 1000;
 
   if (now >= endTime) {
-    console.log(`Auction period ended - triggering completion...`);
+    console.log(`Auction period ended - triggering completion via invisible wallet...`);
     console.log(`  Auction ended at: ${new Date(endTime * 1000).toISOString()}`);
 
-    // Trigger auction completion via API
+    // Trigger auction completion via API (automatically settles the swap)
     const completionResult = await triggerAuctionCompletion(record.id);
     if (completionResult.success) {
-      console.log(`Auction completed! Now attempting to fill as winner...`);
-      // Wait a moment for the chain to update
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      // Try to fill as winner
-      await fillSwapAsWinner(solver, record, outputAmount);
+      console.log(`Auction #${record.id} completed and settled via invisible wallet!`);
+      console.log(`TX Hash: ${completionResult.txHash}`);
+    } else {
+      console.log(`Auction #${record.id} completion failed: ${completionResult.error}`);
     }
     return;
   }
@@ -343,17 +366,21 @@ async function submitSwapBid(solver: VeloxSolver, record: IntentRecord, outputAm
     const solverStats = await solver.getSolverStats();
     await recordBidTransaction(record.id, result.txHash!, solverStats.address, outputAmount);
 
-    // If auction ends very soon, wait and trigger completion
-    if (timeRemaining <= 5) {
-      console.log(`Auction ending soon, waiting to trigger completion...`);
-      await new Promise(resolve => setTimeout(resolve, (timeRemaining + 1) * 1000));
+    // Schedule auction completion after it ends
+    // Run in background so we don't block processing of other intents
+    const waitTime = Math.max(0, timeRemaining + 1) * 1000;
+    console.log(`Scheduling auction completion in ${(waitTime / 1000).toFixed(0)}s...`);
+
+    scheduleAuctionCompletion(record.id, waitTime, async () => {
+      console.log(`\n=== Triggering Auction Completion for Intent #${record.id} ===`);
       const completionResult = await triggerAuctionCompletion(record.id);
       if (completionResult.success) {
-        console.log(`Auction completed! Now attempting to fill as winner...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await fillSwapAsWinner(solver, record, outputAmount);
+        console.log(`Auction #${record.id} completed via invisible wallet!`);
+        console.log(`TX Hash: ${completionResult.txHash}`);
+      } else {
+        console.log(`Auction #${record.id} completion failed: ${completionResult.error}`);
       }
-    }
+    });
   } else {
     console.log(`\n=== Bid Submission Failed ===`);
     console.log(`Error: ${result.error}`);
