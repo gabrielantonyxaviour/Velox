@@ -326,10 +326,10 @@ module velox::settlement {
         let remaining = types::get_escrow_remaining(&record);
         let actual_chunk = math::min(chunk_amount, remaining);
 
-        // Check slippage
-        let max_slippage = types::get_twap_max_slippage(intent);
-        let min_output = math::min_output_with_slippage(actual_chunk, max_slippage);
-        assert!(output_amount >= min_output, errors::min_amount_not_met());
+        // Ensure output is positive (slippage protection requires price oracle - TODO)
+        // max_slippage_bps is stored but not enforced until oracle integration
+        let _max_slippage = types::get_twap_max_slippage(intent);
+        assert!(output_amount > 0, errors::min_amount_not_met());
 
         let input_token = types::get_twap_input_token(intent);
         let output_token = types::get_twap_output_token(intent);

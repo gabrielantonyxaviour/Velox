@@ -384,12 +384,12 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
           />
         </div>
 
-        {/* Purchase Info */}
+        {/* Purchase/Fill Info */}
         {purchasePrice && (
           <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/30">
             <div className="flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-primary" />
-              <span className="text-sm">Purchased At</span>
+              <span className="text-sm">{isFilled ? 'Output Received' : 'Accepted Price'}</span>
             </div>
             <span className="font-bold text-primary">{formatPrice(purchasePrice)}</span>
           </div>
