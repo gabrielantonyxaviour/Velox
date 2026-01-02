@@ -79,7 +79,29 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
   // Update countdown and current price
   useEffect(() => {
     const safeDuration = duration > 0 ? duration : 1;
+    const priceRange = Number(startPrice - endPrice);
 
+    // For filled intents, freeze the chart at the actual received price position
+    if (isFilled && actualReceived > 0n) {
+      // Calculate where the actual received amount falls on the price curve
+      const receivedNum = Number(actualReceived);
+      const startNum = Number(startPrice);
+      const endNum = Number(endPrice);
+
+      // Calculate elapsed percent based on actual price (not time)
+      // price = startPrice - (priceRange * elapsed / duration)
+      // so: elapsed% = (startPrice - actualPrice) / priceRange
+      const pricePosition = priceRange > 0
+        ? ((startNum - receivedNum) / (startNum - endNum)) * 100
+        : 0;
+
+      setElapsedPercent(Math.max(0, Math.min(100, pricePosition)));
+      setCurrentPrice(actualReceived);
+      setTimeRemaining(0);
+      return;
+    }
+
+    // For expired but not filled
     if (!isActive && !purchasePrice) {
       const now = Math.floor(Date.now() / 1000);
       const elapsed = now - startTime;
@@ -89,6 +111,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       return;
     }
 
+    // For active auctions, animate based on time
     const updateState = () => {
       const now = Math.floor(Date.now() / 1000);
       const elapsed = now - startTime;
@@ -102,7 +125,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     updateState();
     const timer = setInterval(updateState, 100); // Update frequently for smooth animation
     return () => clearInterval(timer);
-  }, [isActive, startTime, duration, calculateCurrentPrice, purchasePrice]);
+  }, [isActive, isFilled, actualReceived, startTime, startPrice, endPrice, duration, calculateCurrentPrice, purchasePrice]);
 
   // Draw the chart
   useEffect(() => {
