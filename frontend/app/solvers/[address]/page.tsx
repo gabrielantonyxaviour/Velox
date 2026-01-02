@@ -19,14 +19,12 @@ import {
   TrendingUp,
   TrendingDown,
   Copy,
-  ExternalLink,
   RefreshCw,
   Target,
   Zap,
   Shield,
   Clock,
 } from 'lucide-react';
-import { MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
 
 function StatCard({
   title,
@@ -82,6 +80,7 @@ export default function SolverDetailPage() {
   const address = params.address as string;
   const { solver, isLoading, error, refetch } = useSolverInfo(address);
   const [metadata, setMetadata] = useState<any>(null);
+  const [copiedAddress, setCopiedAddress] = useState<'registered' | 'operator' | null>(null);
 
   useEffect(() => {
     // Fetch metadata with fallback
@@ -100,19 +99,10 @@ export default function SolverDetailPage() {
     setMetadata(solverMetadata);
   }, [address]);
 
-  const copyAddress = () => {
-    if (metadata?.operatorWallet) {
-      navigator.clipboard.writeText(metadata.operatorWallet);
-    }
-  };
-
-  const openExplorer = () => {
-    if (!metadata?.operatorWallet) return;
-    const network = MOVEMENT_CONFIGS[CURRENT_NETWORK].explorer;
-    window.open(
-      `https://explorer.movementnetwork.xyz/account/${metadata.operatorWallet}?network=${network}`,
-      '_blank'
-    );
+  const handleCopy = (text: string, type: 'registered' | 'operator') => {
+    navigator.clipboard.writeText(text);
+    setCopiedAddress(type);
+    setTimeout(() => setCopiedAddress(null), 2000);
   };
 
   const successRate =
@@ -166,30 +156,45 @@ export default function SolverDetailPage() {
               {/* Profile Info */}
               <div className="flex-1">
                 <h1 className="text-4xl font-bold">{metadata.name}</h1>
+
                 {/* Registered Address */}
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 mt-4 bg-muted/50 rounded-lg px-3 py-2 w-fit">
                   <span className="text-xs text-muted-foreground font-semibold">Registered:</span>
-                  <span className="font-mono text-sm text-muted-foreground">
+                  <span className="font-mono text-sm font-medium text-foreground">
                     {address.slice(0, 12)}...{address.slice(-10)}
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 ml-1 hover:bg-muted"
+                    onClick={() => handleCopy(address, 'registered')}
+                    title="Copy registered address"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                  {copiedAddress === 'registered' && (
+                    <span className="text-xs text-primary font-semibold ml-1">Copied!</span>
+                  )}
                 </div>
+
                 {/* Operator Wallet */}
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 bg-muted/50 rounded-lg px-3 py-2 w-fit">
                   <span className="text-xs text-muted-foreground font-semibold">Operator:</span>
-                  <span className="font-mono text-sm text-muted-foreground">
+                  <span className="font-mono text-sm font-medium text-foreground">
                     {metadata.operatorWallet.slice(0, 12)}...{metadata.operatorWallet.slice(-10)}
                   </span>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6"
-                    onClick={() => navigator.clipboard.writeText(metadata.operatorWallet)}
+                    className="h-5 w-5 ml-1 hover:bg-muted"
+                    onClick={() => handleCopy(metadata.operatorWallet, 'operator')}
+                    title="Copy operator address"
                   >
                     <Copy className="w-3 h-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openExplorer}>
-                    <ExternalLink className="w-3 h-3" />
-                  </Button>
+                  {copiedAddress === 'operator' && (
+                    <span className="text-xs text-primary font-semibold ml-1">Copied!</span>
+                  )}
                 </div>
 
                 {metadata.description && (

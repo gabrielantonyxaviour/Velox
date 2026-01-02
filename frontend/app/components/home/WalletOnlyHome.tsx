@@ -14,6 +14,7 @@ import { WalletContextContext } from '../../hooks/use-wallet-context';
 import { cancelIntentNative } from '../../lib/velox/transactions';
 import { showTxSuccess, showError } from '../../lib/toast';
 import { normalizeAddress } from '../../lib/utils';
+import { storePendingTxHash } from '../../lib/velox/intent-tx-store';
 
 export default function WalletOnlyHome() {
   const { account, connected } = useWallet();
@@ -25,9 +26,13 @@ export default function WalletOnlyHome() {
 
   const handleIntentSuccess = useCallback((txHash: string) => {
     showTxSuccess('Intent submitted successfully!', txHash);
+    // Store the tx hash so it can be associated with the new intent
+    if (movementAddress) {
+      storePendingTxHash(movementAddress, txHash);
+    }
     // Refetch with a slight delay to allow chain to finalize
     setTimeout(() => refetch(), 1000);
-  }, [refetch]);
+  }, [refetch, movementAddress]);
 
   const handleIntentError = useCallback((error: string) => {
     showError('Transaction failed', error);

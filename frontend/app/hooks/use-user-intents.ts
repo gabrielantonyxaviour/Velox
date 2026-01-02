@@ -1,8 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { IntentRecord } from '@/app/lib/velox/types';
 import { getUserIntents as fetchUserIntentIds, getIntent } from '@/app/lib/velox/queries';
+import {
+  consumePendingTxHash,
+  storeIntentTxHash,
+  getIntentTxHash,
+  cleanupOldTxHashes,
+} from '@/app/lib/velox/intent-tx-store';
 
 interface UseUserIntentsResult {
   intents: IntentRecord[];
@@ -17,6 +23,7 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
   const [intents, setIntents] = useState<IntentRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastMaxIntentId = useRef<bigint>(0n);
 
   const fetchIntents = useCallback(async (isInitial = false) => {
     if (!userAddress) {
@@ -37,7 +44,6 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
       }
 
       // Step 2: Fetch each intent's details in parallel
-      // getIntent now returns full IntentRecord with all data including auction state
       const intentPromises = intentIds.map(id => getIntent(id));
       const intentResults = await Promise.all(intentPromises);
 
@@ -46,7 +52,28 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
         .filter((intent): intent is IntentRecord => intent !== null)
         .sort((a, b) => b.createdAt - a.createdAt);
 
-      setIntents(validIntents);
+      // Step 4: Check for pending tx hash and associate with newest intent
+      const currentMaxId = validIntents.length > 0
+        ? validIntents.reduce((max, i) => i.id > max ? i.id : max, 0n)
+        : 0n;
+
+      if (currentMaxId > lastMaxIntentId.current) {
+        // New intent detected - check for pending tx hash
+        const pendingTxHash = consumePendingTxHash(userAddress);
+        if (pendingTxHash) {
+          storeIntentTxHash(currentMaxId.toString(), pendingTxHash);
+          cleanupOldTxHashes();
+        }
+        lastMaxIntentId.current = currentMaxId;
+      }
+
+      // Step 5: Enrich intents with stored submitTxHash
+      const enrichedIntents = validIntents.map((intent) => ({
+        ...intent,
+        submitTxHash: getIntentTxHash(intent.id.toString()) || intent.submitTxHash,
+      }));
+
+      setIntents(enrichedIntents);
     } catch (err) {
       console.error('[Velox] Error fetching intents:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch intents');

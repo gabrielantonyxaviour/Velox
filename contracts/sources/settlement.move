@@ -13,6 +13,7 @@ module velox::settlement {
     use velox::errors;
     use velox::math;
     use velox::auction;
+    use velox::solver_registry;
 
     // ============ Constants ============
     const PROTOCOL_FEE_BPS: u64 = 30; // 0.3% fee
@@ -205,6 +206,9 @@ module velox::settlement {
             protocol_fee: fee,
             filled_at: now
         });
+
+        // Update solver stats
+        solver_registry::record_success(registry_addr, solver_addr, fill_input);
     }
 
     /// Fill a limit order
@@ -285,6 +289,9 @@ module velox::settlement {
             protocol_fee: fee,
             filled_at: now
         });
+
+        // Update solver stats
+        solver_registry::record_success(registry_addr, solver_addr, fill_input);
     }
 
     /// Execute TWAP chunk
@@ -372,6 +379,9 @@ module velox::settlement {
                 completed_at: now
             });
         };
+
+        // Update solver stats
+        solver_registry::record_success(registry_addr, solver_addr, actual_chunk);
     }
 
     /// Execute DCA period
@@ -453,6 +463,9 @@ module velox::settlement {
                 completed_at: now
             });
         };
+
+        // Update solver stats
+        solver_registry::record_success(registry_addr, solver_addr, actual_amount);
     }
 
     // ============ Internal Functions ============

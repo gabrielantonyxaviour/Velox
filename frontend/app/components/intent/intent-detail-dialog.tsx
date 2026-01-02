@@ -372,22 +372,42 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
           </div>
 
           {/* Transaction Links */}
-          {intent.fills.length > 0 && intent.fills.some(f => f.txHash) && (
+          {(intent.submitTxHash || (intent.fills.length > 0 && intent.fills.some(f => f.txHash))) && (
             <>
               <Separator />
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">Transactions</span>
-                {intent.fills.slice(0, 3).filter(f => f.txHash).map((fill, idx) => (
+              <div className="space-y-2">
+                <span className="text-xs text-muted-foreground font-medium">Transactions</span>
+
+                {/* Maker TX - Intent Submission */}
+                {intent.submitTxHash && (
+                  <a
+                    href={getExplorerUrl(intent.submitTxHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between p-2 rounded bg-muted/30 hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="text-xs text-muted-foreground">Maker TX (Submit)</span>
+                    <span className="flex items-center gap-1 text-primary text-xs font-mono">
+                      {intent.submitTxHash.slice(0, 10)}...{intent.submitTxHash.slice(-6)}
+                      <ExternalLink className="h-3 w-3" />
+                    </span>
+                  </a>
+                )}
+
+                {/* Taker TX - Fill Transactions */}
+                {intent.fills.filter(f => f.txHash).map((fill, idx) => (
                   <a
                     key={fill.txHash || `fill-${idx}`}
                     href={getExplorerUrl(fill.txHash!)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-between text-xs hover:text-primary"
+                    className="flex items-center justify-between p-2 rounded bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
-                    <span className="text-muted-foreground">Fill #{fill.chunkNumber ?? idx + 1}</span>
-                    <span className="flex items-center gap-1 text-primary">
-                      {fill.txHash!.slice(0, 10)}...
+                    <span className="text-xs text-muted-foreground">
+                      Taker TX {intent.fills.length > 1 ? `#${fill.chunkNumber ?? idx + 1}` : '(Fill)'}
+                    </span>
+                    <span className="flex items-center gap-1 text-primary text-xs font-mono">
+                      {fill.txHash!.slice(0, 10)}...{fill.txHash!.slice(-6)}
                       <ExternalLink className="h-3 w-3" />
                     </span>
                   </a>
