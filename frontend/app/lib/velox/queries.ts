@@ -428,11 +428,14 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
       }
     };
 
+    console.log('[Velox] Sending queries:', { createdQuery, filledQuery });
+
     const [createdRes, filledRes] = await Promise.all([
       fetchWithTimeout(createdQuery),
       fetchWithTimeout(filledQuery),
     ]);
 
+    console.log('[Velox] Raw responses:', { createdRes, filledRes });
     console.log('[Velox] Event fetch results:', {
       createdCount: createdRes?.data?.events?.length || 0,
       filledCount: filledRes?.data?.events?.length || 0,
