@@ -21,7 +21,8 @@ import {
   isNextChunkReady,
   getIntentTotalAmount,
 } from '@/app/lib/velox/types';
-import { getIntent } from '@/app/lib/velox/queries';
+import { getIntent, fetchIntentTransactions, getIntentTransactionData } from '@/app/lib/velox/queries';
+import { getStoredAuctionInfo } from '@/app/lib/velox/auction-storage';
 import { MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
 import { SealedBidAuctionSection } from '@/app/components/intent/sealed-bid-auction-section';
 import { DutchAuctionChart } from '@/app/components/intent/dutch-auction-chart';
@@ -99,19 +100,74 @@ export default function IntentDetailPage() {
   const [countdown, setCountdown] = useState<string>('');
 
   useEffect(() => {
-    async function fetchData() {
+    async function fetchData(isInitial = true) {
       try {
-        setLoading(true);
+        if (isInitial) setLoading(true);
         const id = BigInt(intentId);
         const data = await getIntent(id);
-        setIntent(data);
+        if (!data) {
+          setIntent(null);
+          return;
+        }
+
+        // Fetch transaction data from Supabase
+        await fetchIntentTransactions([id]);
+        const txData = getIntentTransactionData(id);
+
+        // Enrich fills with transaction hashes
+        const enrichedFills = data.fills.map((fill, idx) => {
+          const takerTx = txData?.takerTxHashes.find(t => t.solver === fill.solver)
+            || txData?.takerTxHashes[idx];
+          return { ...fill, txHash: takerTx?.txHash || fill.txHash };
+        });
+
+        // Enrich Dutch auction params from localStorage (preserved from submission)
+        const enrichedAuction = { ...data.auction };
+        const isDutch = enrichedAuction.type === 'dutch_active' || enrichedAuction.type === 'dutch_accepted';
+        if (isDutch) {
+          const storedInfo = getStoredAuctionInfo(id);
+          if (storedInfo && storedInfo.type === 'dutch') {
+            if (!enrichedAuction.startPrice && storedInfo.startPrice) {
+              enrichedAuction.startPrice = BigInt(storedInfo.startPrice);
+            }
+            if (!enrichedAuction.endPrice && storedInfo.endPrice) {
+              enrichedAuction.endPrice = BigInt(storedInfo.endPrice);
+            }
+            if (!enrichedAuction.duration && storedInfo.duration) {
+              enrichedAuction.duration = storedInfo.duration;
+            }
+            if (!enrichedAuction.startTime && storedInfo.startTime) {
+              enrichedAuction.startTime = storedInfo.startTime;
+            }
+          }
+          // Calculate duration from endTime if not set
+          if (enrichedAuction.endTime && !enrichedAuction.duration) {
+            enrichedAuction.duration = enrichedAuction.endTime - data.createdAt;
+          }
+          if (!enrichedAuction.startTime) {
+            enrichedAuction.startTime = data.createdAt;
+          }
+        }
+
+        setIntent({
+          ...data,
+          fills: enrichedFills,
+          auction: enrichedAuction,
+          submitTxHash: txData?.makerTxHash,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load intent');
       } finally {
         setLoading(false);
       }
     }
-    if (intentId) fetchData();
+
+    if (intentId) {
+      fetchData(true);
+      // Poll for updates every 3 seconds for active intents
+      const interval = setInterval(() => fetchData(false), 3000);
+      return () => clearInterval(interval);
+    }
   }, [intentId]);
 
   // Countdown timer for scheduled intents

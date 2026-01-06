@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { IntentRecord } from '@/app/lib/velox/types';
 import { IntentRow } from './intent-row';
 import { IntentDetailDialog } from './intent-detail-dialog';
@@ -15,12 +15,18 @@ interface ActiveIntentsProps {
 }
 
 export function ActiveIntents({ intents, loading, onCancel, cancellingId }: ActiveIntentsProps) {
-  const [selectedIntent, setSelectedIntent] = useState<IntentRecord | null>(null);
+  const [selectedIntentId, setSelectedIntentId] = useState<bigint | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const activeIntents = intents.filter(
     (intent) => intent.status === 'active'
   );
+
+  // Get the live intent data from the intents array (updates in real-time)
+  const selectedIntent = useMemo(() => {
+    if (!selectedIntentId) return null;
+    return intents.find(i => i.id === selectedIntentId) || null;
+  }, [intents, selectedIntentId]);
 
   // Only show when there are actual active intents
   if (activeIntents.length === 0) {
@@ -28,7 +34,7 @@ export function ActiveIntents({ intents, loading, onCancel, cancellingId }: Acti
   }
 
   const handleIntentClick = (intent: IntentRecord) => {
-    setSelectedIntent(intent);
+    setSelectedIntentId(intent.id);
     setIsDialogOpen(true);
   };
 

@@ -15,7 +15,7 @@ interface UseAuctionResult {
   refetch: () => void;
 }
 
-const POLL_INTERVAL = 5000; // 5 seconds for active auctions
+const POLL_INTERVAL = 3000; // 3 seconds for faster real-time updates
 
 // Terminal auction states that don't need polling
 const TERMINAL_AUCTION_TYPES = ['none', 'sealed_bid_completed', 'dutch_accepted', 'failed'];

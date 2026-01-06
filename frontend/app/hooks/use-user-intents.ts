@@ -9,6 +9,7 @@ import {
   getIntentTransactionData,
   storeMakerTransaction,
 } from '@/app/lib/velox/queries';
+import { getStoredAuctionInfo } from '@/app/lib/velox/auction-storage';
 import {
   consumePendingTxHash,
   storeIntentTxHash,
@@ -23,7 +24,7 @@ interface UseUserIntentsResult {
   refetch: () => void;
 }
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const POLL_INTERVAL = 3000; // 3 seconds for faster real-time updates
 
 export function useUserIntents(userAddress: string | null): UseUserIntentsResult {
   const [intents, setIntents] = useState<IntentRecord[]>([]);
@@ -127,6 +128,35 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
               submittedAt: Math.floor(Date.now() / 1000), // Approximate
               txHash: bidTx.txHash,
             }));
+          }
+        }
+
+        // Merge stored Dutch auction parameters (preserved from submission)
+        // This is critical because contract loses start_price/end_price when transitioning to dutch_accepted
+        const isDutchAuction = enrichedAuction.type === 'dutch_active' || enrichedAuction.type === 'dutch_accepted';
+        if (isDutchAuction) {
+          const storedInfo = getStoredAuctionInfo(intent.id);
+          if (storedInfo && storedInfo.type === 'dutch') {
+            // Merge stored params if not already present from on-chain data
+            if (!enrichedAuction.startPrice && storedInfo.startPrice) {
+              enrichedAuction.startPrice = BigInt(storedInfo.startPrice);
+            }
+            if (!enrichedAuction.endPrice && storedInfo.endPrice) {
+              enrichedAuction.endPrice = BigInt(storedInfo.endPrice);
+            }
+            if (!enrichedAuction.duration && storedInfo.duration) {
+              enrichedAuction.duration = storedInfo.duration;
+            }
+            if (!enrichedAuction.startTime && storedInfo.startTime) {
+              enrichedAuction.startTime = storedInfo.startTime;
+            }
+          }
+          // If we have endTime but no duration/startTime, calculate them from intent
+          if (enrichedAuction.endTime && !enrichedAuction.duration) {
+            enrichedAuction.duration = enrichedAuction.endTime - intent.createdAt;
+          }
+          if (!enrichedAuction.startTime) {
+            enrichedAuction.startTime = intent.createdAt;
           }
         }
 

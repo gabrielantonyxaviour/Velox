@@ -71,9 +71,13 @@ function parseAuctionState(rawAuction: Record<string, unknown> | undefined): Auc
     state.startPrice = BigInt(String(rawAuction.start_price || '0'));
     state.endPrice = BigInt(String(rawAuction.end_price || '0'));
     state.endTime = Number(rawAuction.end_time || 0);
+    // startTime and duration will be calculated in use-user-intents hook with intent.createdAt
   } else if (type === 'dutch_accepted') {
     state.acceptedPrice = BigInt(String(rawAuction.accepted_price || '0'));
+    state.acceptedBy = String(rawAuction.winner || '');
     state.winner = String(rawAuction.winner || '');
+    // Note: startPrice, endPrice, duration are lost on-chain when transitioning to dutch_accepted
+    // They will be restored from localStorage in use-user-intents hook
   }
 
   return state;

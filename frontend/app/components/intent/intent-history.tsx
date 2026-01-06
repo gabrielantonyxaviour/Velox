@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { IntentRecord } from '@/app/lib/velox/types';
 import { IntentRow } from './intent-row';
 import { IntentDetailDialog } from './intent-detail-dialog';
@@ -44,11 +44,17 @@ function EmptyState() {
 }
 
 export function IntentHistory({ intents, loading, onCancel, cancellingId }: IntentHistoryProps) {
-  const [selectedIntent, setSelectedIntent] = useState<IntentRecord | null>(null);
+  const [selectedIntentId, setSelectedIntentId] = useState<bigint | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Get the live intent data from the intents array (updates in real-time)
+  const selectedIntent = useMemo(() => {
+    if (!selectedIntentId) return null;
+    return intents.find(i => i.id === selectedIntentId) || null;
+  }, [intents, selectedIntentId]);
+
   const handleIntentClick = (intent: IntentRecord) => {
-    setSelectedIntent(intent);
+    setSelectedIntentId(intent.id);
     setDialogOpen(true);
   };
 
