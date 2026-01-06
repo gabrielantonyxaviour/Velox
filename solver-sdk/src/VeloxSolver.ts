@@ -796,6 +796,18 @@ export class VeloxSolver extends EventEmitter {
         for (const record of intents) {
           const isScheduled = record.intent.type === IntentType.TWAP || record.intent.type === IntentType.DCA;
 
+          // Check if scheduled intent is fully completed
+          if (isScheduled) {
+            const remaining = getRemainingChunks(record);
+            if (remaining === 0) {
+              // All chunks done - stop tracking this intent
+              if (scheduledIntents.has(record.id)) {
+                scheduledIntents.delete(record.id);
+              }
+              continue; // Skip callback for completed scheduled intents
+            }
+          }
+
           if (!lastSeen.has(record.id)) {
             // New intent - process it
             callback(record);
@@ -810,7 +822,7 @@ export class VeloxSolver extends EventEmitter {
           }
         }
 
-        // Clean up completed/cancelled scheduled intents
+        // Clean up completed/cancelled scheduled intents (no longer returned by getActiveIntents)
         const scheduledArray: number[] = Array.from(scheduledIntents);
         for (let i = 0; i < scheduledArray.length; i++) {
           const id = scheduledArray[i]!;
