@@ -743,7 +743,12 @@ export class VeloxSolver extends EventEmitter {
 
       return this.parseSolverStats(result[0], solverAddress);
     } catch (error) {
-      console.error(`Error getting solver stats:`, error);
+      // Error 20 = ESOLVER_NOT_REGISTERED - expected for unregistered solvers
+      const isNotRegisteredError = error instanceof Error &&
+        error.message?.includes('sub_status: Some(20)');
+      if (!isNotRegisteredError) {
+        console.error(`Error getting solver stats:`, error);
+      }
       return {
         address: solverAddress,
         isRegistered: false,
