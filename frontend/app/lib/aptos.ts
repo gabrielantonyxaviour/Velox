@@ -34,7 +34,7 @@ export const aptos = new Aptos(
 );
 
 // Velox contract address on Movement testnet
-export const VELOX_ADDRESS = '0x5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840';
+export const VELOX_ADDRESS = '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
 
 // Utility to convert Uint8Array to hex string
 export const toHex = (buffer: Uint8Array): string => {
@@ -60,8 +60,8 @@ export const getExplorerUrl = (txHashOrVersion: string): string => {
 
 // Token addresses for fungible assets
 export const TOKEN_ADDRESSES = {
-  tUSDC: '0xd28177fbf37d818e493963c11fe567e3f6dad693a1406b309847f850ba6c31f0',
-  tMOVE: '0x23dc029a2171449dd3a00598c6e83ef771ca4567818cea527d4ec6dd48c9701d',
+  tUSDC: '0x194eede164d0a9ee0c8082ff82eebdf146b3936872c203cf9282cd54ea5287ce',
+  tMOVE: '0x626598b71b290f416b9e906dc3dfff337bf0364b3bf53b0bbb6ffab1c0dc373b',
   MOVE: '0x1::aptos_coin::AptosCoin',
 };
 

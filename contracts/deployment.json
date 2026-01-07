@@ -2,22 +2,22 @@
   "network": "movement-bardock-testnet",
   "rpc_url": "https://testnet.movementnetwork.xyz/v1",
   "explorer_url": "https://explorer.movementnetwork.xyz/?network=bardock+testnet",
-  "velox_address": "0x5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840",
-  "deployment_tx": "0xc9f1dc085c1f33ef1e07308426b2c70d3bd5d8a28f3340c786f9e2a2dd17277a",
+  "velox_address": "0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7",
+  "deployment_tx": "0x022bde79f5a02187e8de8da4281dc70ebf5adf988ec3e975aaf4d79707208098",
   "tokens": {
     "tUSDC": {
-      "address": "0xd28177fbf37d818e493963c11fe567e3f6dad693a1406b309847f850ba6c31f0",
+      "address": "0x194eede164d0a9ee0c8082ff82eebdf146b3936872c203cf9282cd54ea5287ce",
       "symbol": "tUSDC",
       "name": "Test USDC",
       "decimals": 8
     },
     "tMOVE": {
-      "address": "0x23dc029a2171449dd3a00598c6e83ef771ca4567818cea527d4ec6dd48c9701d",
+      "address": "0x626598b71b290f416b9e906dc3dfff337bf0364b3bf53b0bbb6ffab1c0dc373b",
       "symbol": "tMOVE",
       "name": "Test MOVE",
       "decimals": 8
     }
   },
-  "deployed_at": "2025-12-30T00:00:00Z",
-  "notes": "Includes public faucet functions for free minting. Conditional intents removed."
+  "deployed_at": "2025-01-07T00:00:00Z",
+  "notes": "Redeployment after Movement testnet reset. Includes public faucet functions for free minting."
 }

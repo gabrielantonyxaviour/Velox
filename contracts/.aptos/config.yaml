@@ -2,27 +2,7 @@
 profiles:
   default:
     network: Custom
-    private_key: ed25519-priv-0x399a74dd2eab1d1a8dfc98cd5d7a672fa60f302712960583d270e7bb4ba0a27a
-    public_key: ed25519-pub-0x97f0474b191c66ec35794f96b88d38d324d6ee2a0ed2161cd2dd5adbf112ae0b
-    account: 1a4532491c40a0202947316d96520ba98f33124b0a69b0715c1aa86d2e4a82f8
-    rest_url: "https://testnet.movementnetwork.xyz/v1"
-    faucet_url: "https://faucet.testnet.movementnetwork.xyz/"
-  velox-new:
-    network: Testnet
-    private_key: ed25519-priv-0xc9444e7d43d2bc504d2277fc32740c1c63c211e3445bff77c73622108f7412ff
-    public_key: ed25519-pub-0xfba01ac14b62cb2afc8716b36c9ef63011f3fe8359808b867b5b0e89c1dbda99
-    account: 5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840
-    rest_url: "https://testnet.movementnetwork.xyz"
-    faucet_url: "https://faucet.testnet.movementnetwork.xyz"
-  velox_faucet:
-    network: Custom
-    private_key: ed25519-priv-0x54b1afadd0be993fb89a664592e0e5e473e2260dc5c2147b1e9775d87a101235
-    public_key: ed25519-pub-0xcb61c2c61493f6e820560878107c1d2aa5ca34a2765c0dee1f1192d65e6806ff
-    account: d2f600dc54ed502b36d6799de01e7b7057b275f651cb0893266faa7b9dad5530
-    rest_url: "https://testnet.movementnetwork.xyz/v1"
-  velox_new:
-    network: Custom
-    private_key: ed25519-priv-0x99fdf2a6aa064510bf1293ac5eaa8429b4d0a4d820dc6f22a623e2d88c6f3559
-    public_key: ed25519-pub-0xc817954ccb96ab467c686efe272660af4a3462cd75fcba782195b94301e829fa
-    account: 24469a05759183ad33e52355746abebef4aca986c98405d79ee46c4475be94b1
+    private_key: ed25519-priv-0xd3b0422d8cd7d5360df08214ced597ec72ab91fee52b6cdfe5f5cddcb28ab9fa
+    public_key: ed25519-pub-0x960f0e07ebd60946bf17d584dd411c9cb0b90b0028f6b645505aa2eca17c04c0
+    account: 951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7
     rest_url: "https://testnet.movementnetwork.xyz/v1"
