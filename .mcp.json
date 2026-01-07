@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "playwright-1": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--user-data-dir=./.playwright-data/session-1"
+      ]
+    },
+    "playwright-2": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--user-data-dir=./.playwright-data/session-2"
+      ]
+    },
+    "playwright-3": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--user-data-dir=./.playwright-data/session-3"
+      ]
+    }
+  }
+}

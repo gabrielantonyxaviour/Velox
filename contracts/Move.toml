@@ -1,0 +1,16 @@
+[package]
+name = "velox"
+version = "1.0.0"
+
+[addresses]
+velox = "0x5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840"
+
+# [dev-addresses]
+# velox = "0xbeef"
+
+[dependencies.AptosFramework]
+git = "https://github.com/movementlabsxyz/aptos-core.git"
+rev = "movement"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dev-dependencies]

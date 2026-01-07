@@ -1,0 +1,20 @@
+{
+  "[project]/app/components/home/PrivyHome.tsx [app-client] (ecmascript, next/dynamic entry)": {
+    "id": "[project]/app/components/home/PrivyHome.tsx [app-client] (ecmascript, next/dynamic entry)",
+    "files": [
+      "static/chunks/app_components_PrivyLoginSection_tsx_1ea25280._.js",
+      "static/chunks/_e291fe09._.js",
+      "static/chunks/node_modules_f753794c._.js",
+      "static/chunks/app_components_home_PrivyHome_tsx_eb15bb25._.js"
+    ]
+  },
+  "[project]/app/components/home/WalletOnlyHome.tsx [app-client] (ecmascript, next/dynamic entry)": {
+    "id": "[project]/app/components/home/WalletOnlyHome.tsx [app-client] (ecmascript, next/dynamic entry)",
+    "files": [
+      "static/chunks/app_components_PrivyLoginSection_tsx_8feecf91._.js",
+      "static/chunks/_000984a9._.js",
+      "static/chunks/node_modules_b8749030._.js",
+      "static/chunks/app_components_home_WalletOnlyHome_tsx_eb15bb25._.js"
+    ]
+  }
+}
