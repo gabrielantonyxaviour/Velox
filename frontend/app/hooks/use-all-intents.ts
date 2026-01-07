@@ -25,6 +25,31 @@ interface IntentFilledEvent {
   output_amount: string;
 }
 
+interface AuctionStartedEvent {
+  intent_id: string;
+  start_time: string;
+  end_time: string;
+}
+
+interface DutchAuctionCreatedEvent {
+  intent_id: string;
+  start_price: string;
+  end_price: string;
+  duration: string;
+  start_time: string;
+}
+
+interface AuctionCompletedEvent {
+  intent_id: string;
+  winner: string;
+}
+
+interface DutchAuctionAcceptedEvent {
+  intent_id: string;
+  solver: string;
+  accepted_price: string;
+}
+
 interface TransactionEvent {
   type: string;
   data: Record<string, unknown>;
@@ -33,6 +58,12 @@ interface TransactionEvent {
 interface Transaction {
   hash: string;
   events: TransactionEvent[];
+}
+
+// Track auction info per intent
+interface AuctionInfo {
+  type: 'sealed-bid' | 'dutch';
+  status: 'active' | 'completed' | 'cancelled';
 }
 
 const RPC_URL = MOVEMENT_CONFIGS[CURRENT_NETWORK].fullnode;
@@ -75,8 +106,9 @@ export function useAllIntents(): UseAllIntentsResult {
 
       setIntents(validIntents);
 
-      // 3. Fetch solver data from events
+      // 3. Fetch solver and auction data from events
       const solverMap = new Map<string, SolverInfo>();
+      const auctionMap = new Map<string, AuctionInfo>();
 
       try {
         const response = await fetch(
@@ -90,6 +122,7 @@ export function useAllIntents(): UseAllIntentsResult {
             if (!tx.events) continue;
 
             for (const event of tx.events) {
+              // Track IntentFilled events for solver stats
               if (event.type === `${VELOX_ADDRESS}::settlement::IntentFilled`) {
                 const data = event.data as unknown as IntentFilledEvent;
                 const solverAddr = data.solver;
@@ -105,12 +138,59 @@ export function useAllIntents(): UseAllIntentsResult {
                 existing.totalVolume += outputAmount;
                 solverMap.set(solverAddr, existing);
               }
+
+              // Track sealed-bid auction events
+              if (event.type === `${VELOX_ADDRESS}::auction::AuctionStarted`) {
+                const data = event.data as unknown as AuctionStartedEvent;
+                auctionMap.set(data.intent_id, { type: 'sealed-bid', status: 'active' });
+              }
+
+              if (event.type === `${VELOX_ADDRESS}::auction::AuctionCompleted`) {
+                const data = event.data as unknown as AuctionCompletedEvent;
+                const existing = auctionMap.get(data.intent_id);
+                if (existing) {
+                  existing.status = 'completed';
+                }
+              }
+
+              if (event.type === `${VELOX_ADDRESS}::auction::AuctionCancelled`) {
+                const data = event.data as { intent_id: string };
+                const existing = auctionMap.get(data.intent_id);
+                if (existing) {
+                  existing.status = 'cancelled';
+                }
+              }
+
+              // Track Dutch auction events
+              if (event.type === `${VELOX_ADDRESS}::auction::DutchAuctionCreated`) {
+                const data = event.data as unknown as DutchAuctionCreatedEvent;
+                auctionMap.set(data.intent_id, { type: 'dutch', status: 'active' });
+              }
+
+              if (event.type === `${VELOX_ADDRESS}::auction::DutchAuctionAccepted`) {
+                const data = event.data as unknown as DutchAuctionAcceptedEvent;
+                const existing = auctionMap.get(data.intent_id);
+                if (existing) {
+                  existing.status = 'completed';
+                }
+              }
             }
           }
         }
       } catch {
         // Ignore event fetch errors
       }
+
+      // Apply auction info to intents
+      for (const intent of validIntents) {
+        const auctionInfo = auctionMap.get(intent.id.toString());
+        if (auctionInfo) {
+          intent.auctionType = auctionInfo.type;
+          intent.auctionStatus = auctionInfo.status;
+        }
+      }
+
+      setIntents(validIntents);
 
       // Convert map to sorted array
       const solverList = Array.from(solverMap.values())

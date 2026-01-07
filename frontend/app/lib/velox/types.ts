@@ -54,6 +54,9 @@ export interface IntentRecord {
   totalPeriods?: number; // DCA
   periodsExecuted?: number; // DCA
   amountPerPeriod?: bigint; // DCA
+  // Auction fields
+  auctionType?: 'sealed-bid' | 'dutch';
+  auctionStatus?: 'active' | 'completed' | 'cancelled';
 }
 
 /**

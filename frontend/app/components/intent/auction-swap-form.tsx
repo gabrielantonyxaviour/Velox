@@ -245,9 +245,9 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
     <Card className="w-full max-w-md mx-auto p-6 bg-card border-border">
       <div className="flex items-center gap-2 mb-6">
         {auctionType === AuctionType.SEALED_BID ? (
-          <Gavel className="w-5 h-5 text-blue-400" />
+          <Gavel className="w-5 h-5 text-primary" />
         ) : (
-          <Clock className="w-5 h-5 text-green-400" />
+          <Clock className="w-5 h-5 text-amber-400" />
         )}
         <h2 className="text-xl font-semibold">
           {auctionType === AuctionType.SEALED_BID ? 'Sealed-Bid' : 'Dutch'} Auction Swap
@@ -261,10 +261,10 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
         {/* Info Banner */}
         <div className={`border rounded-lg p-3 ${
           auctionType === AuctionType.SEALED_BID
-            ? 'bg-blue-500/10 border-blue-500/20'
-            : 'bg-green-500/10 border-green-500/20'
+            ? 'bg-primary/10 border-primary/20'
+            : 'bg-amber-500/10 border-amber-500/20'
         }`}>
-          <p className={`text-sm ${auctionType === AuctionType.SEALED_BID ? 'text-blue-400' : 'text-green-400'}`}>
+          <p className={`text-sm ${auctionType === AuctionType.SEALED_BID ? 'text-primary' : 'text-amber-400'}`}>
             {auctionType === AuctionType.SEALED_BID
               ? 'Solvers submit sealed bids. Best offer wins after auction ends.'
               : 'Price drops from start to min. First solver to accept wins.'}
@@ -342,8 +342,8 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
 
         {/* Auction-specific settings */}
         {auctionType === AuctionType.SEALED_BID ? (
-          <div className="space-y-1.5 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-            <label className="block text-sm text-blue-400 flex items-center gap-1">
+          <div className="space-y-1.5 p-4 rounded-lg bg-primary/5 border border-primary/20">
+            <label className="block text-sm text-primary flex items-center gap-1">
               <Gavel className="w-3 h-3" /> Sealed Bid Duration
             </label>
             <div className="flex gap-2">
@@ -408,8 +408,8 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
           disabled={isLoading || !isConnected}
           className={`w-full h-12 text-base font-medium ${
             auctionType === AuctionType.SEALED_BID
-              ? 'bg-blue-600 hover:bg-blue-700'
-              : 'bg-green-600 hover:bg-green-700'
+              ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+              : 'bg-amber-600 hover:bg-amber-700 text-white'
           }`}
         >
           {isLoading ? (

@@ -7,7 +7,7 @@ import { getScheduledIntentInfo, ScheduledIntentInfo, fetchPeriodFillEvents } fr
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
 import { TOKEN_LIST } from '@/app/constants/tokens';
-import { ArrowRight, ChevronRight, Timer, Calendar, TrendingUp, Check } from 'lucide-react';
+import { ArrowRight, ChevronRight, Timer, Calendar, TrendingUp, Check, Gavel, Clock } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-500',
@@ -185,6 +185,15 @@ export function ExplorerIntentRow({ intent }: ExplorerIntentRowProps) {
           <Badge className={TYPE_COLORS[intent.intentType] + ' text-xs'}>
             {getIntentTypeDisplay(intent.intentType)}
           </Badge>
+          {intent.auctionType && (
+            <Badge className={`text-xs ${intent.auctionType === 'sealed-bid' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-400'}`}>
+              {intent.auctionType === 'sealed-bid' ? (
+                <><Gavel className="h-3 w-3 mr-1" />Sealed</>
+              ) : (
+                <><Clock className="h-3 w-3 mr-1" />Dutch</>
+              )}
+            </Badge>
+          )}
           <span className="text-muted-foreground">#{intent.id.toString()}</span>
         </div>
         <div className="flex items-center gap-2">

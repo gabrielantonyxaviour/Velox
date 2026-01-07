@@ -57,7 +57,7 @@ const TYPE_COLORS: Record<IntentType, string> = {
   dca: 'bg-primary/10 text-primary',
 };
 
-type FilterType = 'all' | IntentType;
+type FilterType = 'all' | IntentType | 'auction';
 
 const FILTER_TABS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -65,6 +65,7 @@ const FILTER_TABS: { value: FilterType; label: string }[] = [
   { value: 'limit_order', label: 'Limit' },
   { value: 'dca', label: 'DCA' },
   { value: 'twap', label: 'TWAP' },
+  { value: 'auction', label: 'Auction' },
 ];
 
 export default function ExplorerPage() {
@@ -74,6 +75,7 @@ export default function ExplorerPage() {
 
   const filteredIntents = useMemo(() => {
     if (filter === 'all') return intents;
+    if (filter === 'auction') return intents.filter(i => i.auctionType);
     return intents.filter(i => i.intentType === filter);
   }, [intents, filter]);
 
@@ -153,7 +155,7 @@ export default function ExplorerPage() {
                   </div>
                 ) : filteredIntents.length === 0 ? (
                   <p className="p-4 text-muted-foreground text-sm">
-                    {filter === 'all' ? 'No intents yet' : `No ${getIntentTypeDisplay(filter as IntentType)} intents`}
+                    {filter === 'all' ? 'No intents yet' : filter === 'auction' ? 'No auction intents' : `No ${getIntentTypeDisplay(filter as IntentType)} intents`}
                   </p>
                 ) : (
                   <div className="divide-y divide-border max-h-[500px] overflow-y-auto">
