@@ -67,7 +67,7 @@ function getTokenDecimals(address: string): number {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500',
+  pending: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
   partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
@@ -232,12 +232,12 @@ export default function IntentDetailPage() {
                         <div className="text-center">
                           {isScheduledIntent ? (
                             <>
-                              <p className="text-2xl font-bold text-green-500">
+                              <p className="text-2xl font-bold text-primary">
                                 {totalOutputReceived > BigInt(0) ? formatAmount(totalOutputReceived, outputDecimals) : '--'}
                               </p>
                               <p className="text-sm text-muted-foreground">{outputSymbol}</p>
                               {totalOutputReceived > BigInt(0) && (
-                                <p className="text-xs text-green-500 mt-1">Accumulated</p>
+                                <p className="text-xs text-primary mt-1">Accumulated</p>
                               )}
                             </>
                           ) : (
@@ -286,9 +286,9 @@ export default function IntentDetailPage() {
 
                         {/* Completed Status */}
                         {isScheduledCompleted && (
-                          <div className="flex items-center gap-2 p-3 rounded-md bg-green-500/10 border border-green-500/20">
-                            <Check className="h-4 w-4 text-green-500" />
-                            <span className="text-sm text-green-600">
+                          <div className="flex items-center gap-2 p-3 rounded-md bg-primary/10 border border-primary/20">
+                            <Check className="h-4 w-4 text-primary" />
+                            <span className="text-sm text-primary">
                               All {totalPeriods} {intent.intentType === 'dca' ? 'periods' : 'chunks'} completed!
                             </span>
                           </div>
@@ -298,10 +298,10 @@ export default function IntentDetailPage() {
                         {totalOutputReceived > BigInt(0) && (
                           <div className="flex items-center justify-between p-3 rounded-md bg-muted/50 border border-border">
                             <div className="flex items-center gap-2">
-                              <TrendingUp className="h-4 w-4 text-green-500" />
+                              <TrendingUp className="h-4 w-4 text-primary" />
                               <span className="text-sm text-muted-foreground">Total Accumulated:</span>
                             </div>
-                            <span className="text-sm font-semibold text-green-500">
+                            <span className="text-sm font-semibold text-primary">
                               {formatAmount(totalOutputReceived, outputDecimals)} {outputSymbol}
                             </span>
                           </div>

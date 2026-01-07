@@ -70,14 +70,14 @@ export function DutchAuctionMonitor({ intentId }: DutchAuctionMonitorProps) {
     : 0;
 
   return (
-    <div className="p-4 rounded-lg bg-card border border-green-500/30">
+    <div className="p-4 rounded-lg bg-card border border-amber-500/30">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-green-400" />
-          <span className="text-green-400 font-medium">Dutch Auction</span>
+          <Clock className="h-4 w-4 text-amber-400" />
+          <span className="text-amber-400 font-medium">Dutch Auction</span>
         </div>
         {auction.isActive ? (
-          <span className="px-2 py-1 text-xs bg-green-500/20 text-green-400 rounded-full">
+          <span className="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-full">
             Active
           </span>
         ) : (
@@ -104,13 +104,13 @@ export function DutchAuctionMonitor({ intentId }: DutchAuctionMonitorProps) {
 
         <div className="pt-2 border-t border-border text-sm">
           <span className="text-muted-foreground">Price dropped: </span>
-          <span className="text-red-400">{priceDropPercent.toFixed(1)}%</span>
+          <span className="text-amber-400">{priceDropPercent.toFixed(1)}%</span>
         </div>
 
         {auction.winner && (
           <div className="pt-2 border-t border-border">
             <span className="text-muted-foreground text-sm">Winner: </span>
-            <span className="text-green-400 font-mono text-xs">
+            <span className="text-primary font-mono text-xs">
               {auction.winner.slice(0, 10)}...
             </span>
             <div className="text-muted-foreground text-sm mt-1">

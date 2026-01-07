@@ -10,7 +10,7 @@ import { TOKEN_LIST } from '@/app/constants/tokens';
 import { ArrowRight, ChevronRight, Timer, Calendar, TrendingUp, Check, Gavel, Clock } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-500/10 text-yellow-500',
+  pending: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
   partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',

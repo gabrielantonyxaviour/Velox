@@ -259,9 +259,9 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
 
               {/* Completed Status */}
               {isScheduledCompleted && (
-                <div className="flex items-center gap-2 p-2 rounded-md bg-green-500/10 border border-green-500/20">
-                  <Check className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-green-600">All {totalPeriods} periods completed!</span>
+                <div className="flex items-center gap-2 p-2 rounded-md bg-primary/10 border border-primary/20">
+                  <Check className="h-4 w-4 text-primary" />
+                  <span className="text-sm text-primary">All {totalPeriods} periods completed!</span>
                 </div>
               )}
 
@@ -269,10 +269,10 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
               {totalOutputReceived > BigInt(0) && (
                 <div className="flex items-center justify-between p-2 rounded-md bg-muted/50 border border-border">
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    <TrendingUp className="h-4 w-4 text-primary" />
                     <span className="text-sm text-muted-foreground">Accumulated:</span>
                   </div>
-                  <span className="text-sm font-semibold text-green-500">
+                  <span className="text-sm font-semibold text-primary">
                     {formatAmount(totalOutputReceived)} {getTokenSymbol(intent.outputToken)}
                   </span>
                 </div>
