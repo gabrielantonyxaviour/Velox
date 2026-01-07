@@ -46,20 +46,27 @@ Movement-Counter-template/
 
 ---
 
-## Git Configuration (MANDATORY)
+## Git Configuration
 
-**ALWAYS use these credentials for ALL commits and pushes:**
-
-| Setting | Value |
-|---------|-------|
-| **User Name** | `gabrielantonyxaviour` |
-| **User Email** | `gabrielantony56@gmail.com` |
-
-Before making any commits, ALWAYS run:
-```bash
-git config user.name "gabrielantonyxaviour"
-git config user.email "gabrielantony56@gmail.com"
+**Account:** gabrielantonyxaviour (Gabriel)
 ```
+user.name: gabrielantonyxaviour
+user.email: gabrielantony56@gmail.com
+```
+
+### Auto-Commit Rule
+**IMPORTANT:** After EVERY response that modifies code/files, you MUST run:
+```bash
+cd /Users/gabrielantonyxaviour/Documents/starters/movement/Velox && \
+git add -A && \
+git commit -m "$(cat <<'EOF'
+<concise description of changes>
+EOF
+)" && \
+git push
+```
+
+This ensures all changes are tracked and pushed to gabrielantonyxaviour/Velox.
 
 ---
 
