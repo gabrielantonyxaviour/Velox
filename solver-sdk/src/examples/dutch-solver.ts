@@ -4,10 +4,10 @@ import { Intent, IntentType, AuctionType } from '../types/intent';
 
 async function main() {
   const solver = new VeloxSolver({
-    rpcUrl: process.env.RPC_URL || 'https://testnet.bardock.movementnetwork.xyz/v1',
+    rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
     veloxAddress:
       process.env.VELOX_ADDRESS ||
-      '0x5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840',
+      '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
     privateKey: process.env.SOLVER_PRIVATE_KEY,
     pollingInterval: 500, // Faster polling for Dutch auctions
     skipExistingOnStartup: true,
