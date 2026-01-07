@@ -430,17 +430,27 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
       }
     }`;
 
+    const fetchWithTimeout = async (query: string) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      try {
+        const res = await fetch(INDEXER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+          signal: controller.signal,
+        });
+        return await res.json();
+      } catch {
+        return { data: { events: [] } };
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
     const [createdRes, filledRes] = await Promise.all([
-      fetch(INDEXER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: createdQuery }),
-      }).then(res => res.json()).catch(() => ({ data: { events: [] } })),
-      fetch(INDEXER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: filledQuery }),
-      }).then(res => res.json()).catch(() => ({ data: { events: [] } })),
+      fetchWithTimeout(createdQuery),
+      fetchWithTimeout(filledQuery),
     ]);
 
     // Process IntentCreated events
