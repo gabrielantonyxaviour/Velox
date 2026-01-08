@@ -612,3 +612,156 @@ export async function getTotalOutputFromFills(intentId: bigint): Promise<bigint>
 export function clearPeriodFillCache(): void {
   periodFillCache.clear();
 }
+
+// ============ Auction Query Functions ============
+
+export interface DutchAuctionInfo {
+  intentId: bigint;
+  startTime: number;
+  startPrice: bigint;
+  endPrice: bigint;
+  duration: number;
+  isActive: boolean;
+  winner: string | null;
+  acceptedPrice: bigint | null;
+  currentPrice: bigint;
+}
+
+export interface SealedBidAuctionInfo {
+  intentId: bigint;
+  startTime: number;
+  endTime: number;
+  isActive: boolean;
+  bidCount: number;
+  winner: string | null;
+  winningBid: bigint | null;
+}
+
+/**
+ * Get Dutch auction info for an intent
+ */
+export async function getDutchAuctionInfo(intentId: bigint): Promise<DutchAuctionInfo | null> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::auction::get_dutch_auction`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+
+    if (!result || !result[0]) return null;
+
+    const data = result[0] as Record<string, unknown>;
+
+    const startTime = Number(data.start_time || 0);
+    const startPrice = BigInt(String(data.start_price || '0'));
+    const endPrice = BigInt(String(data.end_price || '0'));
+    const duration = Number(data.duration || 0);
+    const isActive = data.is_active === true;
+    const winner = data.winner ? String((data.winner as { vec: string[] }).vec?.[0] || '') : null;
+    const acceptedPrice = data.accepted_price
+      ? BigInt(String((data.accepted_price as { vec: string[] }).vec?.[0] || '0'))
+      : null;
+
+    // Calculate current price
+    const now = Math.floor(Date.now() / 1000);
+    const elapsed = now - startTime;
+    let currentPrice = startPrice;
+
+    if (elapsed >= duration) {
+      currentPrice = endPrice;
+    } else if (elapsed > 0) {
+      const priceDiff = startPrice - endPrice;
+      const priceDecrease = (priceDiff * BigInt(elapsed)) / BigInt(duration);
+      currentPrice = startPrice - priceDecrease;
+    }
+
+    return {
+      intentId,
+      startTime,
+      startPrice,
+      endPrice,
+      duration,
+      isActive,
+      winner,
+      acceptedPrice,
+      currentPrice,
+    };
+  } catch (error) {
+    console.error('[Velox] Error fetching Dutch auction info:', error);
+    return null;
+  }
+}
+
+/**
+ * Get sealed-bid auction info for an intent
+ */
+export async function getSealedBidAuctionInfo(intentId: bigint): Promise<SealedBidAuctionInfo | null> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::auction::get_auction_info`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+
+    if (!result || !result[0]) return null;
+
+    const data = result[0] as Record<string, unknown>;
+
+    return {
+      intentId,
+      startTime: Number(data.start_time || 0),
+      endTime: Number(data.end_time || 0),
+      isActive: data.is_active === true,
+      bidCount: Number(data.bid_count || 0),
+      winner: data.winner ? String((data.winner as { vec: string[] }).vec?.[0] || '') : null,
+      winningBid: data.winning_bid
+        ? BigInt(String((data.winning_bid as { vec: string[] }).vec?.[0] || '0'))
+        : null,
+    };
+  } catch (error) {
+    console.error('[Velox] Error fetching sealed-bid auction info:', error);
+    return null;
+  }
+}
+
+/**
+ * Get solver detailed stats
+ */
+export async function getSolverStats(solverAddress: string): Promise<{
+  stake: bigint;
+  volume: bigint;
+  reputation: number;
+  fills: number;
+  failures: number;
+  avgSlippage: number;
+  isActive: boolean;
+} | null> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::solver_registry::get_solver_stats`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, solverAddress],
+      },
+    });
+
+    if (!result || result.length < 7) return null;
+
+    return {
+      stake: BigInt(String(result[0] || '0')),
+      volume: BigInt(String(result[1] || '0')),
+      reputation: Number(result[2] || 0),
+      fills: Number(result[3] || 0),
+      failures: Number(result[4] || 0),
+      avgSlippage: Number(result[5] || 0),
+      isActive: result[6] === true,
+    };
+  } catch (error) {
+    console.error('[Velox] Error fetching solver stats:', error);
+    return null;
+  }
+}

@@ -57,6 +57,20 @@ export interface IntentRecord {
   // Auction fields
   auctionType?: 'sealed-bid' | 'dutch';
   auctionStatus?: 'active' | 'completed' | 'cancelled';
+  // Extended auction fields
+  auctionStartTime?: number;
+  auctionEndTime?: number;
+  auctionStartPrice?: bigint; // Dutch auction start price
+  auctionEndPrice?: bigint; // Dutch auction end price
+  auctionDuration?: number; // Dutch auction duration
+  auctionCurrentPrice?: bigint; // Current Dutch price
+  auctionWinner?: string;
+  auctionAcceptedPrice?: bigint;
+  bidCount?: number; // Sealed-bid auction
+  // Solver execution info
+  solverReputation?: number;
+  executionTime?: number; // seconds from submission to fill
+  actualSlippageBps?: number; // actual slippage vs expected
 }
 
 /**

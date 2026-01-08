@@ -4,10 +4,13 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { IntentRecord, getIntentTypeDisplay, IntentType } from '@/app/lib/velox/types';
 import { getScheduledIntentInfo, ScheduledIntentInfo, fetchPeriodFillEvents } from '@/app/lib/velox/queries';
+import { ExplorerSwapRow } from './explorer-swap-row';
+import { ExplorerLimitRow } from './explorer-limit-row';
+import { ExplorerAuctionRow } from './explorer-auction-row';
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
 import { TOKEN_LIST } from '@/app/constants/tokens';
-import { ArrowRight, ChevronRight, Timer, Calendar, TrendingUp, Check, Gavel, Clock } from 'lucide-react';
+import { ArrowRight, ChevronRight, Timer, Calendar, TrendingUp, Check } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-500/10 text-amber-400',
@@ -46,14 +49,31 @@ function getTokenDecimals(address: string): number {
   return token?.decimals || 8;
 }
 
-function formatTime(timestamp: number): string {
-  if (!timestamp) return '--';
-  const date = new Date(timestamp * 1000);
-  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+export function ExplorerIntentRow({ intent }: ExplorerIntentRowProps) {
+  // Route auction intents to specialized component
+  if (intent.auctionType) {
+    return <ExplorerAuctionRow intent={intent} />;
+  }
+
+  // Route based on intent type
+  switch (intent.intentType) {
+    case 'swap':
+      return <ExplorerSwapRow intent={intent} />;
+
+    case 'limit_order':
+      return <ExplorerLimitRow intent={intent} />;
+
+    case 'dca':
+    case 'twap':
+      return <ExplorerScheduledRow intent={intent} />;
+
+    default:
+      return <ExplorerSwapRow intent={intent} />;
+  }
 }
 
-export function ExplorerIntentRow({ intent }: ExplorerIntentRowProps) {
-  const isScheduledIntent = intent.intentType === 'dca' || intent.intentType === 'twap';
+// Scheduled intent row (DCA/TWAP) with progress tracking
+function ExplorerScheduledRow({ intent }: { intent: IntentRecord }) {
   const [scheduledInfo, setScheduledInfo] = useState<ScheduledIntentInfo | null>(null);
   const [periodFillCount, setPeriodFillCount] = useState(0);
   const [countdown, setCountdown] = useState<string>('');
@@ -61,26 +81,24 @@ export function ExplorerIntentRow({ intent }: ExplorerIntentRowProps) {
   const inputSymbol = getTokenSymbol(intent.inputToken);
   const outputSymbol = getTokenSymbol(intent.outputToken);
   const inputDecimals = getTokenDecimals(intent.inputToken);
+  const outputDecimals = getTokenDecimals(intent.outputToken);
+
+  const isDCA = intent.intentType === 'dca';
 
   const fetchData = useCallback(async () => {
-    if (!isScheduledIntent) return;
     const [info, fills] = await Promise.all([
       getScheduledIntentInfo(intent.id),
       fetchPeriodFillEvents(intent.id),
     ]);
     setScheduledInfo(info);
     setPeriodFillCount(fills.length);
-  }, [intent.id, isScheduledIntent]);
+  }, [intent.id]);
 
   useEffect(() => {
-    if (isScheduledIntent) {
-      // Initial fetch and periodic refresh - intentional data sync pattern
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      void fetchData();
-      const interval = setInterval(() => void fetchData(), 15000);
-      return () => clearInterval(interval);
-    }
-  }, [fetchData, isScheduledIntent]);
+    void fetchData();
+    const interval = setInterval(() => void fetchData(), 15000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   useEffect(() => {
     if (!scheduledInfo) return;
@@ -115,99 +133,80 @@ export function ExplorerIntentRow({ intent }: ExplorerIntentRowProps) {
   const periodsExecuted = scheduledInfo?.chunksExecuted ?? intent.periodsExecuted ?? intent.chunksExecuted ?? periodFillCount;
   const totalPeriods = scheduledInfo?.totalChunks ?? intent.totalPeriods ?? intent.numChunks ?? 0;
   const progress = totalPeriods > 0 ? (periodsExecuted / totalPeriods) * 100 : 0;
-  const isScheduledCompleted = scheduledInfo?.isCompleted || (totalPeriods > 0 && periodsExecuted >= totalPeriods);
+  const isCompleted = scheduledInfo?.isCompleted || (totalPeriods > 0 && periodsExecuted >= totalPeriods);
 
-  if (isScheduledIntent) {
-    return (
-      <Link
-        href={`/explorer/intent/${intent.id.toString()}`}
-        className="block p-3 hover:bg-muted/50 text-sm cursor-pointer"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            {intent.intentType === 'dca' ? (
-              <Calendar className="h-4 w-4 text-primary" />
-            ) : (
-              <TrendingUp className="h-4 w-4 text-primary" />
-            )}
-            <Badge className={TYPE_COLORS[intent.intentType] + ' text-xs'}>
-              {getIntentTypeDisplay(intent.intentType)}
-            </Badge>
-            <span className="text-muted-foreground">#{intent.id.toString()}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {isScheduledCompleted ? (
-              <Badge className="bg-primary/10 text-primary text-xs">
-                <Check className="h-3 w-3 mr-1" />COMPLETED
-              </Badge>
-            ) : (
-              <Badge className={STATUS_COLORS[intent.status] + ' text-xs'}>
-                {intent.status.toUpperCase()}
-              </Badge>
-            )}
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </div>
-        </div>
+  // Calculate accumulated output from event fills
+  const formattedOutput = intent.outputAmount
+    ? formatAmount(intent.outputAmount, outputDecimals)
+    : null;
 
-        <div className="flex items-center gap-2 text-xs mb-2">
-          <span className="font-medium">{formatAmount(intent.amountIn, inputDecimals)} {inputSymbol}</span>
-          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          <span>{outputSymbol}</span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-muted-foreground">Progress</span>
-              <span className="font-medium">{periodsExecuted}/{totalPeriods}</span>
-            </div>
-            <Progress value={progress} className="h-1.5" />
-          </div>
-          {!isScheduledCompleted && countdown && (
-            <div className="flex items-center gap-1 text-xs text-primary">
-              <Timer className="h-3 w-3" />
-              <span className="font-medium">{countdown}</span>
-            </div>
-          )}
-        </div>
-      </Link>
-    );
-  }
-
-  // Regular intent display
   return (
     <Link
       href={`/explorer/intent/${intent.id.toString()}`}
       className="block p-3 hover:bg-muted/50 text-sm cursor-pointer"
     >
-      <div className="flex items-center justify-between mb-1">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
+          {isDCA ? (
+            <Calendar className="h-4 w-4 text-primary" />
+          ) : (
+            <TrendingUp className="h-4 w-4 text-primary" />
+          )}
           <Badge className={TYPE_COLORS[intent.intentType] + ' text-xs'}>
             {getIntentTypeDisplay(intent.intentType)}
           </Badge>
-          {intent.auctionType && (
-            <Badge className={`text-xs ${intent.auctionType === 'sealed-bid' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-400'}`}>
-              {intent.auctionType === 'sealed-bid' ? (
-                <><Gavel className="h-3 w-3 mr-1" />Sealed</>
-              ) : (
-                <><Clock className="h-3 w-3 mr-1" />Dutch</>
-              )}
-            </Badge>
-          )}
           <span className="text-muted-foreground">#{intent.id.toString()}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className={STATUS_COLORS[intent.status] + ' text-xs'}>
-            {intent.status.toUpperCase()}
-          </Badge>
+          {isCompleted ? (
+            <Badge className="bg-primary/10 text-primary text-xs">
+              <Check className="h-3 w-3 mr-1" />COMPLETED
+            </Badge>
+          ) : (
+            <Badge className={STATUS_COLORS[intent.status] + ' text-xs'}>
+              {intent.status.toUpperCase()}
+            </Badge>
+          )}
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
-      <div className="flex items-center gap-2 text-xs">
-        <span>{formatAmount(intent.amountIn, inputDecimals)} {inputSymbol}</span>
+
+      {/* Amount display */}
+      <div className="flex items-center gap-2 text-xs mb-2">
+        <span className="font-medium">{formatAmount(intent.amountIn, inputDecimals)} {inputSymbol}</span>
         <ArrowRight className="h-3 w-3 text-muted-foreground" />
-        <span>{outputSymbol}</span>
-        <span className="ml-auto text-muted-foreground">{formatTime(intent.createdAt)}</span>
+        {formattedOutput ? (
+          <span className="text-primary font-medium">{formattedOutput} {outputSymbol}</span>
+        ) : (
+          <span>{outputSymbol}</span>
+        )}
+        {intent.intervalSeconds && (
+          <span className="ml-2 text-muted-foreground">
+            every {intent.intervalSeconds < 3600
+              ? `${Math.floor(intent.intervalSeconds / 60)}m`
+              : `${Math.floor(intent.intervalSeconds / 3600)}h`}
+          </span>
+        )}
+      </div>
+
+      {/* Progress */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-muted-foreground">
+              {isDCA ? 'Periods' : 'Chunks'}
+            </span>
+            <span className="font-medium">{periodsExecuted}/{totalPeriods}</span>
+          </div>
+          <Progress value={progress} className="h-1.5" />
+        </div>
+        {!isCompleted && countdown && (
+          <div className="flex items-center gap-1 text-xs text-primary">
+            <Timer className="h-3 w-3" />
+            <span className="font-medium">{countdown}</span>
+          </div>
+        )}
       </div>
     </Link>
   );

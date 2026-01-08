@@ -42,12 +42,18 @@ interface DutchAuctionCreatedEvent {
 interface AuctionCompletedEvent {
   intent_id: string;
   winner: string;
+  winning_bid?: string;
 }
 
 interface DutchAuctionAcceptedEvent {
   intent_id: string;
   solver: string;
   accepted_price: string;
+}
+
+interface BidSubmittedEvent {
+  intent_id: string;
+  solver: string;
 }
 
 interface TransactionEvent {
@@ -64,6 +70,14 @@ interface Transaction {
 interface AuctionInfo {
   type: 'sealed-bid' | 'dutch';
   status: 'active' | 'completed' | 'cancelled';
+  startTime?: number;
+  endTime?: number;
+  startPrice?: bigint;
+  endPrice?: bigint;
+  duration?: number;
+  winner?: string;
+  acceptedPrice?: bigint;
+  bidCount?: number;
 }
 
 const RPC_URL = MOVEMENT_CONFIGS[CURRENT_NETWORK].fullnode;
@@ -142,7 +156,22 @@ export function useAllIntents(): UseAllIntentsResult {
               // Track sealed-bid auction events
               if (event.type === `${VELOX_ADDRESS}::auction::AuctionStarted`) {
                 const data = event.data as unknown as AuctionStartedEvent;
-                auctionMap.set(data.intent_id, { type: 'sealed-bid', status: 'active' });
+                auctionMap.set(data.intent_id, {
+                  type: 'sealed-bid',
+                  status: 'active',
+                  startTime: Number(data.start_time || 0),
+                  endTime: Number(data.end_time || 0),
+                  bidCount: 0,
+                });
+              }
+
+              // Track bid submissions for bid count
+              if (event.type === `${VELOX_ADDRESS}::auction::BidSubmitted`) {
+                const data = event.data as unknown as BidSubmittedEvent;
+                const existing = auctionMap.get(data.intent_id);
+                if (existing) {
+                  existing.bidCount = (existing.bidCount || 0) + 1;
+                }
               }
 
               if (event.type === `${VELOX_ADDRESS}::auction::AuctionCompleted`) {
@@ -150,6 +179,10 @@ export function useAllIntents(): UseAllIntentsResult {
                 const existing = auctionMap.get(data.intent_id);
                 if (existing) {
                   existing.status = 'completed';
+                  existing.winner = data.winner;
+                  if (data.winning_bid) {
+                    existing.acceptedPrice = BigInt(data.winning_bid);
+                  }
                 }
               }
 
@@ -164,7 +197,14 @@ export function useAllIntents(): UseAllIntentsResult {
               // Track Dutch auction events
               if (event.type === `${VELOX_ADDRESS}::auction::DutchAuctionCreated`) {
                 const data = event.data as unknown as DutchAuctionCreatedEvent;
-                auctionMap.set(data.intent_id, { type: 'dutch', status: 'active' });
+                auctionMap.set(data.intent_id, {
+                  type: 'dutch',
+                  status: 'active',
+                  startTime: Number(data.start_time || 0),
+                  startPrice: BigInt(data.start_price || '0'),
+                  endPrice: BigInt(data.end_price || '0'),
+                  duration: Number(data.duration || 0),
+                });
               }
 
               if (event.type === `${VELOX_ADDRESS}::auction::DutchAuctionAccepted`) {
@@ -172,6 +212,8 @@ export function useAllIntents(): UseAllIntentsResult {
                 const existing = auctionMap.get(data.intent_id);
                 if (existing) {
                   existing.status = 'completed';
+                  existing.winner = data.solver;
+                  existing.acceptedPrice = BigInt(data.accepted_price || '0');
                 }
               }
             }
@@ -187,6 +229,14 @@ export function useAllIntents(): UseAllIntentsResult {
         if (auctionInfo) {
           intent.auctionType = auctionInfo.type;
           intent.auctionStatus = auctionInfo.status;
+          intent.auctionStartTime = auctionInfo.startTime;
+          intent.auctionEndTime = auctionInfo.endTime;
+          intent.auctionStartPrice = auctionInfo.startPrice;
+          intent.auctionEndPrice = auctionInfo.endPrice;
+          intent.auctionDuration = auctionInfo.duration;
+          intent.auctionWinner = auctionInfo.winner;
+          intent.auctionAcceptedPrice = auctionInfo.acceptedPrice;
+          intent.bidCount = auctionInfo.bidCount;
         }
       }
 
