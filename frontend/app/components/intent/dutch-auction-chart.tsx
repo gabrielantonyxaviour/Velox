@@ -22,9 +22,9 @@ function truncateAddress(addr: string): string {
 }
 
 function formatTimeRemaining(seconds: number): string {
-  if (seconds <= 0) return 'Ended';
+  if (isNaN(seconds) || seconds <= 0) return 'Ended';
   const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  const secs = Math.floor(seconds % 60);
   if (mins > 0) return `${mins}m ${secs}s`;
   return `${secs}s`;
 }
@@ -46,32 +46,36 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
 
   // Calculate current price based on Dutch auction curve
   const calculateCurrentPrice = useCallback((elapsedSeconds: number): bigint => {
+    if (duration <= 0) return startPrice;
     if (elapsedSeconds >= duration) return endPrice;
     if (elapsedSeconds <= 0) return startPrice;
 
     const priceRange = Number(startPrice - endPrice);
     const priceDrop = (priceRange * elapsedSeconds) / duration;
+    if (isNaN(priceDrop) || !isFinite(priceDrop)) return startPrice;
     return startPrice - BigInt(Math.floor(priceDrop));
   }, [startPrice, endPrice, duration]);
 
   // Update countdown and current price
   useEffect(() => {
+    const safeDuration = duration > 0 ? duration : 1;
+
     if (!isActive && !purchasePrice) {
       const now = Math.floor(Date.now() / 1000);
       const elapsed = now - startTime;
-      setElapsedPercent(Math.min(100, (elapsed / duration) * 100));
+      setElapsedPercent(Math.min(100, (elapsed / safeDuration) * 100));
       setCurrentPrice(calculateCurrentPrice(elapsed));
-      setTimeRemaining(Math.max(0, duration - elapsed));
+      setTimeRemaining(Math.max(0, safeDuration - elapsed));
       return;
     }
 
     const updateState = () => {
       const now = Math.floor(Date.now() / 1000);
       const elapsed = now - startTime;
-      const remaining = Math.max(0, startTime + duration - now);
+      const remaining = Math.max(0, startTime + safeDuration - now);
 
       setTimeRemaining(remaining);
-      setElapsedPercent(Math.min(100, (elapsed / duration) * 100));
+      setElapsedPercent(Math.min(100, (elapsed / safeDuration) * 100));
       setCurrentPrice(calculateCurrentPrice(elapsed));
     };
 
@@ -110,13 +114,15 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       const startNum = Number(startPrice);
       const endNum = Number(endPrice);
       const range = startNum - endNum;
+      if (range === 0) return padding.top + chartHeight / 2;
       const fromTop = (startNum - priceNum) / range;
       return padding.top + fromTop * chartHeight;
     };
 
     // Time to X coordinate (0 to duration)
+    const safeDuration = duration > 0 ? duration : 1;
     const timeToX = (t: number): number => {
-      return padding.left + (t / duration) * chartWidth;
+      return padding.left + (t / safeDuration) * chartWidth;
     };
 
     // Draw grid lines
@@ -141,7 +147,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
 
     // Vertical grid (time)
     for (let i = 0; i <= 4; i++) {
-      const t = (duration * i) / 4;
+      const t = (safeDuration * i) / 4;
       const x = timeToX(t);
       ctx.beginPath();
       ctx.moveTo(x, padding.top);
@@ -157,7 +163,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
 
     // Calculate current elapsed time
     const now = Math.floor(Date.now() / 1000);
-    const elapsed = Math.min(duration, now - startTime);
+    const elapsed = Math.min(safeDuration, now - startTime);
     const purchaseElapsed = purchaseTime ? purchaseTime - startTime : null;
 
     // Draw the declining price curve (actual - solid blue)
@@ -178,13 +184,13 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     ctx.stroke();
 
     // If purchase was made, draw dotted line showing what would have happened
-    if (purchaseElapsed !== null && purchaseElapsed < duration) {
+    if (purchaseElapsed !== null && purchaseElapsed < safeDuration) {
       ctx.beginPath();
       ctx.strokeStyle = 'hsl(var(--muted-foreground))';
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
 
-      for (let t = purchaseElapsed; t <= duration; t += 0.5) {
+      for (let t = purchaseElapsed; t <= safeDuration; t += 0.5) {
         const price = calculateCurrentPrice(t);
         const x = timeToX(t);
         const y = priceToY(price);
@@ -222,7 +228,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     }
 
     // If still active, draw current price indicator
-    if (isActive && elapsed < duration) {
+    if (isActive && elapsed < safeDuration) {
       const currentX = timeToX(elapsed);
       const currentY = priceToY(currentPrice);
 

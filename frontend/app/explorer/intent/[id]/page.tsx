@@ -11,10 +11,13 @@ import { Skeleton } from '@/app/components/ui/skeleton';
 import { Progress } from '@/app/components/ui/progress';
 import { IntentRecord, getIntentTypeDisplay } from '@/app/lib/velox/types';
 import { getIntent, fetchIntentEvents, getIntentEventData, getScheduledIntentInfo, fetchPeriodFillEvents, ScheduledIntentInfo } from '@/app/lib/velox/queries';
-import { MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
+import { MOVEMENT_CONFIGS, CURRENT_NETWORK, VELOX_ADDRESS } from '@/app/lib/aptos';
+import { checkAuctionForIntent, getStoredAuctionInfo, StoredAuctionInfo } from '@/app/lib/velox/auction-storage';
+import { SealedBidAuctionSection } from '@/app/components/intent/sealed-bid-auction-section';
+import { DutchAuctionChart } from '@/app/components/intent/dutch-auction-chart';
 import { TOKENS } from '@/constants/contracts';
 import { TOKEN_LIST } from '@/app/constants/tokens';
-import { ExternalLink, ArrowRight, Clock, User, Zap, Timer, TrendingUp, Check, ArrowUpRight, Calendar } from 'lucide-react';
+import { ExternalLink, ArrowRight, Clock, User, Zap, Timer, TrendingUp, Check, ArrowUpRight, Calendar, Gavel } from 'lucide-react';
 
 interface PeriodFill {
   txHash: string;
@@ -84,6 +87,7 @@ export default function IntentDetailPage() {
   const [scheduledInfo, setScheduledInfo] = useState<ScheduledIntentInfo | null>(null);
   const [periodFills, setPeriodFills] = useState<PeriodFill[]>([]);
   const [countdown, setCountdown] = useState<string>('');
+  const [auctionInfo, setAuctionInfo] = useState<StoredAuctionInfo | null>(null);
 
   const isScheduledIntent = intent?.intentType === 'dca' || intent?.intentType === 'twap';
 
@@ -110,6 +114,32 @@ export default function IntentDetailPage() {
             data.submissionTxHash = eventData.submissionTxHash || data.submissionTxHash;
             data.settlementTxHash = eventData.settlementTxHash || data.settlementTxHash;
             data.outputAmount = eventData.outputAmount || data.outputAmount;
+          }
+
+          // Check for auction info
+          const storedInfo = getStoredAuctionInfo(intentId);
+          if (storedInfo) {
+            data.auctionType = storedInfo.type;
+            data.auctionStatus = data.status === 'filled' ? 'completed' : 'active';
+            data.auctionStartTime = storedInfo.startTime;
+            data.auctionEndTime = storedInfo.endTime;
+            data.auctionDuration = storedInfo.duration;
+            if (storedInfo.startPrice) data.auctionStartPrice = BigInt(storedInfo.startPrice);
+            if (storedInfo.endPrice) data.auctionEndPrice = BigInt(storedInfo.endPrice);
+            setAuctionInfo(storedInfo);
+          } else {
+            // Try on-chain lookup
+            const onChainAuction = await checkAuctionForIntent(id);
+            if (onChainAuction) {
+              data.auctionType = onChainAuction.type;
+              data.auctionStatus = data.status === 'filled' ? 'completed' : 'active';
+              data.auctionStartTime = onChainAuction.startTime;
+              data.auctionEndTime = onChainAuction.endTime;
+              data.auctionDuration = onChainAuction.duration;
+              if (onChainAuction.startPrice) data.auctionStartPrice = BigInt(onChainAuction.startPrice);
+              if (onChainAuction.endPrice) data.auctionEndPrice = BigInt(onChainAuction.endPrice);
+              setAuctionInfo(onChainAuction);
+            }
           }
         }
         setIntent(data);
@@ -208,10 +238,15 @@ export default function IntentDetailPage() {
                         <div className="flex items-center gap-2">
                           {intent.intentType === 'dca' && <Calendar className="h-5 w-5 text-primary" />}
                           {intent.intentType === 'twap' && <TrendingUp className="h-5 w-5 text-primary" />}
+                          {intent.auctionType && <Gavel className="h-5 w-5 text-primary" />}
                           <CardTitle className="text-lg">Intent #{intent.id.toString()}</CardTitle>
                         </div>
                         <div className="flex gap-2">
-                          <Badge className="bg-primary/10 text-primary">{getIntentTypeDisplay(intent.intentType)}</Badge>
+                          <Badge className={intent.auctionType === 'dutch' ? 'bg-amber-500/10 text-amber-400' : 'bg-primary/10 text-primary'}>
+                            {intent.auctionType === 'sealed-bid' ? 'Sealed Bid Swap' :
+                             intent.auctionType === 'dutch' ? 'Dutch Auction Swap' :
+                             getIntentTypeDisplay(intent.intentType)}
+                          </Badge>
                           {isScheduledIntent && isScheduledCompleted ? (
                             <Badge className="bg-primary/10 text-primary">
                               <Check className="h-3 w-3 mr-1" />COMPLETED
@@ -250,6 +285,14 @@ export default function IntentDetailPage() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* Auction Visualization */}
+                  {intent.auctionType === 'sealed-bid' && (
+                    <SealedBidAuctionSection intent={intent} />
+                  )}
+                  {intent.auctionType === 'dutch' && (
+                    <DutchAuctionChart intent={intent} />
+                  )}
 
                   {/* DCA/TWAP Progress Card */}
                   {isScheduledIntent && (

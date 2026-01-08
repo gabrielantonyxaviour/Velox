@@ -9,6 +9,7 @@ import {
   getIntentEventData,
 } from '@/app/lib/velox/queries';
 import { VELOX_ADDRESS, MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
+import { getStoredAuctionInfo, cleanupOldAuctionEntries, checkAuctionForIntent, storeAuctionIntent } from '@/app/lib/velox/auction-storage';
 
 interface UseUserIntentsResult {
   intents: IntentRecord[];
@@ -132,11 +133,17 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
 
         if (response.ok) {
           const transactions: Transaction[] = await response.json();
+          console.log('[Velox] Fetched transactions for auction events:', transactions.length);
 
           for (const tx of transactions) {
             if (!tx.events) continue;
 
             for (const event of tx.events) {
+              // Log auction-related events for debugging
+              if (event.type.includes('auction')) {
+                console.log('[Velox] Found auction event:', event.type, event.data);
+              }
+
               // Track sealed-bid auction events
               if (event.type === `${VELOX_ADDRESS}::auction::AuctionStarted`) {
                 const data = event.data as unknown as AuctionStartedEvent;
@@ -207,10 +214,37 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
         // Ignore auction fetch errors
       }
 
-      // Apply auction info to intents
+      // Apply auction info to intents (from blockchain events OR localStorage)
+      // Cleanup old localStorage entries first
+      cleanupOldAuctionEntries();
+
+      console.log('[Velox] Auction map size (from blockchain):', auctionMap.size);
+
       for (const intent of validIntents) {
-        const auctionInfo = auctionMap.get(intent.id.toString());
+        const intentIdStr = intent.id.toString();
+
+        // First check localStorage (more reliable for recent submissions)
+        const storedInfo = getStoredAuctionInfo(intentIdStr);
+        if (storedInfo) {
+          console.log('[Velox] Applying stored auction info to intent:', intentIdStr, storedInfo);
+          intent.auctionType = storedInfo.type;
+          intent.auctionStatus = intent.status === 'filled' ? 'completed' : 'active';
+          intent.auctionStartTime = storedInfo.startTime;
+          intent.auctionEndTime = storedInfo.endTime;
+          intent.auctionDuration = storedInfo.duration;
+          if (storedInfo.startPrice) {
+            intent.auctionStartPrice = BigInt(storedInfo.startPrice);
+          }
+          if (storedInfo.endPrice) {
+            intent.auctionEndPrice = BigInt(storedInfo.endPrice);
+          }
+          continue; // Skip blockchain lookup for this intent
+        }
+
+        // Fallback to blockchain event data
+        const auctionInfo = auctionMap.get(intentIdStr);
         if (auctionInfo) {
+          console.log('[Velox] Applying blockchain auction info to intent:', intentIdStr, auctionInfo);
           intent.auctionType = auctionInfo.type;
           intent.auctionStatus = auctionInfo.status;
           intent.auctionStartTime = auctionInfo.startTime;
@@ -221,6 +255,33 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
           intent.auctionWinner = auctionInfo.winner;
           intent.auctionAcceptedPrice = auctionInfo.acceptedPrice;
           intent.bidCount = auctionInfo.bidCount;
+        } else {
+          // Third fallback: query contract directly for auction info
+          try {
+            const onChainAuction = await checkAuctionForIntent(BigInt(intent.id));
+            if (onChainAuction) {
+              console.log('[Velox] Found on-chain auction for intent:', intentIdStr, onChainAuction);
+              intent.auctionType = onChainAuction.type;
+              intent.auctionStatus = intent.status === 'filled' ? 'completed' : 'active';
+              intent.auctionStartTime = onChainAuction.startTime;
+              intent.auctionEndTime = onChainAuction.endTime;
+              intent.auctionDuration = onChainAuction.duration;
+              if (onChainAuction.startPrice) {
+                intent.auctionStartPrice = BigInt(onChainAuction.startPrice);
+              }
+              if (onChainAuction.endPrice) {
+                intent.auctionEndPrice = BigInt(onChainAuction.endPrice);
+              }
+              // Store for future lookups
+              storeAuctionIntent(intentIdStr, onChainAuction.type, {
+                duration: onChainAuction.duration,
+                startPrice: onChainAuction.startPrice ? BigInt(onChainAuction.startPrice) : undefined,
+                endPrice: onChainAuction.endPrice ? BigInt(onChainAuction.endPrice) : undefined,
+              });
+            }
+          } catch {
+            // Ignore contract query errors
+          }
         }
       }
 
