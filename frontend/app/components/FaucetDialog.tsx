@@ -12,7 +12,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { SimpleConfirmDialog, SimpleTransactionDetails } from './ui/simple-confirm-dialog';
-import { Loader2, Droplets, Check, ExternalLink } from 'lucide-react';
+import { Loader2, Droplets, Check } from 'lucide-react';
 import { TOKEN_LIST, Token } from '../constants/tokens';
 import { useFaucet } from '../hooks/use-faucet';
 import { getExplorerUrl } from '../lib/aptos';
@@ -267,22 +267,6 @@ function MintForm({
           </>
         )}
       </Button>
-
-      {/* Native MOVE Faucet Link */}
-      <div className="pt-2 border-t">
-        <p className="text-xs text-muted-foreground mb-2">
-          Need native MOVE for gas fees?
-        </p>
-        <a
-          href="https://faucet.movementnetwork.xyz/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-        >
-          Get MOVE from public faucet
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      </div>
     </div>
   );
 }
