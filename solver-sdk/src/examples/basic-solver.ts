@@ -3,6 +3,8 @@ import { VeloxSolver } from '../VeloxSolver';
 import { Intent, IntentType } from '../types/intent';
 
 async function main() {
+  const shinamiNodeKey = process.env.SHINAMI_KEY;
+
   const solver = new VeloxSolver({
     rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
     veloxAddress:
@@ -12,9 +14,16 @@ async function main() {
     pollingInterval: 10000, // 10 seconds to avoid rate limiting
     // Skip processing intents that existed before solver started - only react to new ones
     skipExistingOnStartup: true,
+    // Shinami Node Service for enhanced RPC reliability (optional)
+    shinamiNodeKey,
   });
 
   console.log('Starting Velox Basic Solver...');
+  if (shinamiNodeKey) {
+    console.log('Shinami Node Service: ENABLED');
+  } else {
+    console.log('Shinami Node Service: DISABLED (using standard RPC)');
+  }
   console.log('Listening for pending intents...\n');
 
   // Handle errors
@@ -84,6 +93,25 @@ async function main() {
 }
 
 async function handleSwapIntent(solver: VeloxSolver, intent: Intent): Promise<void> {
+  // First, check if there's an active sealed bid auction for this intent
+  const hasAuction = await solver.isSealedBidAuctionActive(intent.id);
+
+  if (hasAuction) {
+    console.log('Intent has an active sealed bid auction - handling via auction flow...');
+    await handleSealedBidAuction(solver, intent);
+    return;
+  }
+
+  // Also check for Dutch auction
+  const dutch = await solver.getDutchAuction(intent.id);
+  if (dutch && dutch.isActive) {
+    console.log('Intent has an active Dutch auction - skipping (use dutch-solver instead)');
+    return;
+  }
+
+  // No auction - solve directly
+  console.log('No active auction - solving directly...');
+
   // Calculate optimal solution using real-time CoinGecko prices
   console.log('Calculating optimal solution for swap...');
   const solution = await solver.calculateOptimalSolution(intent);
@@ -111,6 +139,68 @@ async function handleSwapIntent(solver: VeloxSolver, intent: Intent): Promise<vo
   } else {
     console.log(`\n=== Swap Solution Failed ===`);
     console.log(`Error: ${result.error}`);
+  }
+}
+
+async function handleSealedBidAuction(solver: VeloxSolver, intent: Intent): Promise<void> {
+  // Get auction details
+  const auction = await solver.getSealedBidAuction(intent.id);
+  if (!auction) {
+    console.log('Could not get auction details');
+    return;
+  }
+
+  console.log(`\n=== Sealed Bid Auction Details ===`);
+  console.log(`Start Time: ${new Date(Number(auction.startTime) * 1000).toISOString()}`);
+  console.log(`End Time: ${new Date(Number(auction.endTime) * 1000).toISOString()}`);
+  console.log(`Status: ${auction.status}`);
+  console.log(`Solutions submitted: ${auction.solutionCount}`);
+
+  const timeRemaining = await solver.getAuctionTimeRemaining(intent.id);
+  console.log(`Time remaining: ${timeRemaining} seconds`);
+
+  // Calculate our bid
+  console.log('Calculating optimal bid...');
+  const solution = await solver.calculateOptimalSolution(intent);
+
+  console.log(`Our bid:`);
+  console.log(`  Output Amount: ${solution.outputAmount}`);
+  console.log(`  Execution Price: ${solution.executionPrice}`);
+
+  // Check minimum output
+  if (intent.minOutputAmount && solution.outputAmount < intent.minOutputAmount) {
+    console.log(`Skipping - cannot meet minimum output`);
+    console.log(`  Min required: ${intent.minOutputAmount}`);
+    console.log(`  We can provide: ${solution.outputAmount}`);
+    return;
+  }
+
+  // Submit our bid
+  console.log('Submitting bid to auction...');
+  const bidResult = await solver.submitBid(
+    intent.id,
+    solution.outputAmount,
+    solution.executionPrice
+  );
+
+  if (!bidResult.success) {
+    console.log(`Failed to submit bid: ${bidResult.error}`);
+    return;
+  }
+
+  console.log(`\n=== Bid Submitted Successfully! ===`);
+  console.log(`TX Hash: ${bidResult.txHash}`);
+  console.log(`Output Amount: ${solution.outputAmount}`);
+  console.log(`Now waiting for auction to complete...`);
+
+  // Monitor auction and settle if we win
+  const settleResult = await solver.monitorAndSettleAuction(intent.id, 2000);
+
+  if (settleResult) {
+    console.log(`\n=== Won Auction & Settled Successfully! ===`);
+    console.log(`Settle TX: ${settleResult.txHash}`);
+  } else {
+    console.log(`\n=== Did not win the auction ===`);
   }
 }
 

@@ -6,6 +6,7 @@ import {
 } from '@aptos-labs/ts-sdk';
 import { aptos, VELOX_ADDRESS, toHex } from '../aptos';
 import { DutchAuction } from './types';
+import { sponsoredSubmit, isSponsorshipEnabled } from '../shinami';
 
 export interface SignRawHashFunction {
   (params: { address: string; chainType: 'aptos'; hash: `0x${string}` }): Promise<{
@@ -13,7 +14,7 @@ export interface SignRawHashFunction {
   }>;
 }
 
-// Helper to build and sign transactions with Privy
+// Helper to build and sign transactions with Privy (user pays gas - fallback)
 async function signAndSubmitWithPrivy(
   walletAddress: string,
   functionId: `${string}::${string}::${string}`,
@@ -60,6 +61,33 @@ async function signAndSubmitWithPrivy(
   return committedTx.hash;
 }
 
+/**
+ * Smart transaction submission - uses Shinami Gas Station if available,
+ * otherwise falls back to user-paid gas
+ */
+async function smartSubmitWithPrivy(
+  walletAddress: string,
+  functionId: `${string}::${string}::${string}`,
+  args: (string | number | bigint | boolean)[],
+  publicKeyHex: string,
+  signRawHash: SignRawHashFunction
+): Promise<string> {
+  // Try sponsored submission first if enabled
+  if (isSponsorshipEnabled()) {
+    try {
+      console.log('[Velox] Using Shinami Gas Station for sponsored transaction');
+      return await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
+    } catch (error) {
+      console.warn('[Velox] Sponsored submission failed, falling back to user-paid:', error);
+      // Fall through to user-paid submission
+    }
+  }
+
+  // Fallback to user-paid gas
+  console.log('[Velox] Using user-paid gas transaction');
+  return signAndSubmitWithPrivy(walletAddress, functionId, args, publicKeyHex, signRawHash);
+}
+
 // ============ Swap Intent ============
 
 export async function submitSwapIntent(
@@ -72,7 +100,7 @@ export async function submitSwapIntent(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_swap`,
     [VELOX_ADDRESS, inputToken, outputToken, amountIn.toString(), minAmountOut.toString(), deadline],
@@ -126,7 +154,7 @@ export async function submitLimitOrderIntent(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_limit_order`,
     [
@@ -191,7 +219,7 @@ export async function submitTWAPIntent(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_twap`,
     [
@@ -259,7 +287,7 @@ export async function submitDCAIntent(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_dca`,
     [
@@ -322,7 +350,7 @@ export async function submitSwapWithAuction(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_swap_with_auction`,
     [
@@ -389,7 +417,7 @@ export async function submitSwapWithDutchAuction(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_swap_with_dutch_auction`,
     [
@@ -492,7 +520,7 @@ export async function cancelIntent(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::cancel_intent`,
     [VELOX_ADDRESS, intentId.toString()],

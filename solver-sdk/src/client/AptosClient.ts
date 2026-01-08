@@ -1,26 +1,53 @@
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-labs/ts-sdk';
 
+// Shinami Node Service URL for Movement
+const SHINAMI_NODE_URL = 'https://api.shinami.com/movement/node/v1';
+
 export interface AptosClientConfig {
   rpcUrl: string;
   privateKey?: string;
+  /** Shinami Node Service API key for enhanced reliability */
+  shinamiNodeKey?: string;
 }
 
 export class VeloxAptosClient {
   private aptos: Aptos;
   private account?: Account;
+  private usingShinami: boolean = false;
 
   constructor(config: AptosClientConfig) {
-    this.aptos = new Aptos(
-      new AptosConfig({
-        network: Network.CUSTOM,
-        fullnode: config.rpcUrl,
-      })
-    );
+    // Use Shinami Node Service if API key is provided for enhanced reliability
+    if (config.shinamiNodeKey) {
+      console.log('[VeloxAptosClient] Using Shinami Node Service for enhanced reliability');
+      this.aptos = new Aptos(
+        new AptosConfig({
+          network: Network.CUSTOM,
+          fullnode: SHINAMI_NODE_URL,
+          clientConfig: {
+            HEADERS: {
+              'X-API-Key': config.shinamiNodeKey,
+            },
+          },
+        })
+      );
+      this.usingShinami = true;
+    } else {
+      this.aptos = new Aptos(
+        new AptosConfig({
+          network: Network.CUSTOM,
+          fullnode: config.rpcUrl,
+        })
+      );
+    }
 
     if (config.privateKey) {
       const privateKey = new Ed25519PrivateKey(config.privateKey);
       this.account = Account.fromPrivateKey({ privateKey });
     }
+  }
+
+  isUsingShinami(): boolean {
+    return this.usingShinami;
   }
 
   getAptos(): Aptos {
