@@ -9,7 +9,7 @@ async function main() {
       process.env.VELOX_ADDRESS ||
       '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
     privateKey: process.env.SOLVER_PRIVATE_KEY,
-    pollingInterval: 1000,
+    pollingInterval: 10000, // 10 seconds to avoid rate limiting
     // Skip processing intents that existed before solver started - only react to new ones
     skipExistingOnStartup: true,
   });
