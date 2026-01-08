@@ -4,7 +4,7 @@ import { Intent, IntentType } from '../types/intent';
 
 async function main() {
   const solver = new VeloxSolver({
-    rpcUrl: process.env.RPC_URL || 'https://rpc.ankr.com/http/movement_bardock',
+    rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
     veloxAddress:
       process.env.VELOX_ADDRESS ||
       '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',

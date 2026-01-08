@@ -14,7 +14,7 @@ npm install @velox/solver-sdk
 import { VeloxSolver, Intent } from '@velox/solver-sdk';
 
 const solver = new VeloxSolver({
-  rpcUrl: 'https://rpc.ankr.com/http/movement_bardock',
+  rpcUrl: 'https://testnet.movementnetwork.xyz/v1',
   veloxAddress: '0x...',
   privateKey: process.env.SOLVER_PRIVATE_KEY,
 });
@@ -140,7 +140,7 @@ interface Solution {
 ## Environment Variables
 
 ```bash
-RPC_URL=https://rpc.ankr.com/http/movement_bardock
+RPC_URL=https://testnet.movementnetwork.xyz/v1
 VELOX_ADDRESS=0x...
 SOLVER_PRIVATE_KEY=0x...
 MIN_PROFIT_BPS=10
