@@ -6,8 +6,10 @@ import { Card } from '@/app/components/ui/card';
 import { Label } from '@/app/components/ui/label';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
+import { TransactionConfirmDialog } from './transaction-confirm-dialog';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
+import { useTransactionConfirm, createTWAPDetails } from '@/app/hooks/use-transaction-confirm';
 import { submitTWAPIntent, submitTWAPIntentNative } from '@/app/lib/velox/transactions';
 import { fetchTokenBalance } from '@/app/lib/aptos';
 import { Loader2 } from 'lucide-react';
@@ -35,6 +37,7 @@ const SLIPPAGE_OPTIONS = [0.1, 0.5, 1.0, 2.0];
 
 export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
   const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
   const [outputToken, setOutputToken] = useState<Token | null>(null);
@@ -101,7 +104,7 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
     return null;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -110,8 +113,24 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
 
     if (!walletAddress || !inputToken || !outputToken) return;
 
-    setIsLoading(true);
     setError(null);
+
+    // Open confirmation dialog
+    const details = createTWAPDetails(
+      inputToken,
+      outputToken,
+      totalAmount,
+      numChunks,
+      intervalSeconds,
+      maxSlippageBps
+    );
+    txConfirm.openConfirmation(details);
+  };
+
+  const executeTransaction = async () => {
+    if (!walletAddress || !inputToken || !outputToken) return;
+
+    setIsLoading(true);
 
     try {
       const amount = BigInt(Math.floor(parseFloat(totalAmount) * Math.pow(10, inputToken.decimals)));
@@ -150,6 +169,7 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
       }
 
       setTotalAmount('');
+      txConfirm.closeConfirmation();
       onSuccess?.(txHash);
     } catch (err: any) {
       const errorMsg = err.message || 'Transaction failed';
@@ -304,6 +324,16 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
           )}
         </Button>
       </div>
+
+      {/* Confirmation Dialog */}
+      <TransactionConfirmDialog
+        open={txConfirm.isOpen}
+        onOpenChange={txConfirm.closeConfirmation}
+        details={txConfirm.details}
+        onConfirm={executeTransaction}
+        onCancel={txConfirm.closeConfirmation}
+        isLoading={isLoading}
+      />
     </Card>
   );
 }

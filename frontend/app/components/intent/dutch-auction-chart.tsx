@@ -10,7 +10,8 @@ interface DutchAuctionChartProps {
 }
 
 function formatPrice(price: bigint): string {
-  return (Number(price) / 10000).toFixed(4);
+  // Prices are stored as token amounts with 8 decimals
+  return (Number(price) / 1e8).toFixed(4);
 }
 
 function formatAmount(amount: bigint): string {
@@ -36,8 +37,10 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [elapsedPercent, setElapsedPercent] = useState<number>(0);
 
-  const startPrice = intent.auctionStartPrice ?? BigInt(20000); // Default 2.0
-  const endPrice = intent.auctionEndPrice ?? BigInt(10000);     // Default 1.0
+  // Prices are stored as token amounts with 8 decimals
+  // Default to reasonable values if not set (should rarely happen)
+  const startPrice = intent.auctionStartPrice ?? BigInt(3000000000); // Default 30.0
+  const endPrice = intent.auctionEndPrice ?? BigInt(2500000000);     // Default 25.0
   const duration = intent.auctionDuration ?? 60;
   const startTime = intent.auctionStartTime ?? intent.createdAt;
   const isActive = intent.auctionStatus === 'active';
@@ -92,6 +95,13 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Get computed colors from CSS variables
+    const computedStyle = getComputedStyle(document.documentElement);
+    const bgColor = computedStyle.getPropertyValue('--background').trim() || '0 0% 7%';
+    const primaryColor = computedStyle.getPropertyValue('--primary').trim() || '35 92% 65%';
+    const mutedFgColor = computedStyle.getPropertyValue('--muted-foreground').trim() || '0 0% 45%';
+    const borderColor = computedStyle.getPropertyValue('--border').trim() || '0 0% 15%';
+
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * dpr;
@@ -104,8 +114,8 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
 
-    // Clear canvas
-    ctx.fillStyle = 'hsl(var(--background))';
+    // Clear canvas with actual background color
+    ctx.fillStyle = `hsl(${bgColor})`;
     ctx.fillRect(0, 0, width, height);
 
     // Price to Y coordinate
@@ -126,7 +136,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     };
 
     // Draw grid lines
-    ctx.strokeStyle = 'hsl(var(--border))';
+    ctx.strokeStyle = `hsl(${borderColor})`;
     ctx.lineWidth = 0.5;
 
     // Horizontal grid (price)
@@ -139,7 +149,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       ctx.stroke();
 
       // Price labels
-      ctx.fillStyle = 'hsl(var(--muted-foreground))';
+      ctx.fillStyle = `hsl(${mutedFgColor})`;
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(formatPrice(price), padding.left - 5, y + 3);
@@ -155,7 +165,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       ctx.stroke();
 
       // Time labels
-      ctx.fillStyle = 'hsl(var(--muted-foreground))';
+      ctx.fillStyle = `hsl(${mutedFgColor})`;
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`${Math.floor(t)}s`, x, height - 10);
@@ -166,9 +176,9 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     const elapsed = Math.min(safeDuration, now - startTime);
     const purchaseElapsed = purchaseTime ? purchaseTime - startTime : null;
 
-    // Draw the declining price curve (actual - solid blue)
+    // Draw the declining price curve (actual - solid primary)
     ctx.beginPath();
-    ctx.strokeStyle = 'hsl(var(--primary))';
+    ctx.strokeStyle = `hsl(${primaryColor})`;
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -186,7 +196,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     // If purchase was made, draw dotted line showing what would have happened
     if (purchaseElapsed !== null && purchaseElapsed < safeDuration) {
       ctx.beginPath();
-      ctx.strokeStyle = 'hsl(var(--muted-foreground))';
+      ctx.strokeStyle = `hsl(${mutedFgColor})`;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
 
@@ -207,21 +217,21 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       // Pulsing circle effect
       ctx.beginPath();
       ctx.arc(purchaseX, purchaseY, 12, 0, Math.PI * 2);
-      ctx.fillStyle = 'hsla(var(--primary), 0.2)';
+      ctx.fillStyle = `hsla(${primaryColor}, 0.2)`;
       ctx.fill();
 
       ctx.beginPath();
       ctx.arc(purchaseX, purchaseY, 8, 0, Math.PI * 2);
-      ctx.fillStyle = 'hsla(var(--primary), 0.4)';
+      ctx.fillStyle = `hsla(${primaryColor}, 0.4)`;
       ctx.fill();
 
       ctx.beginPath();
       ctx.arc(purchaseX, purchaseY, 5, 0, Math.PI * 2);
-      ctx.fillStyle = 'hsl(var(--primary))';
+      ctx.fillStyle = `hsl(${primaryColor})`;
       ctx.fill();
 
       // Label for purchase point
-      ctx.fillStyle = 'hsl(var(--primary))';
+      ctx.fillStyle = `hsl(${primaryColor})`;
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('SOLD', purchaseX + 15, purchaseY + 4);

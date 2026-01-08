@@ -26,6 +26,12 @@ export interface Intent {
     maxSlippageBps?: number;
     startTime?: Date;
 }
+export declare enum AuctionStatus {
+    ACTIVE = "Active",
+    SELECTING = "Selecting",
+    COMPLETED = "Completed",
+    CANCELLED = "Cancelled"
+}
 export interface DutchAuction {
     intentId: bigint;
     startTime: bigint;
@@ -35,6 +41,21 @@ export interface DutchAuction {
     isActive: boolean;
     winner: string | null;
     acceptedPrice: bigint;
+}
+export interface SealedBidAuction {
+    intentId: bigint;
+    startTime: bigint;
+    endTime: bigint;
+    solutionCount: number;
+    winner: string | null;
+    status: AuctionStatus;
+}
+export interface AuctionSolution {
+    intentId: bigint;
+    solver: string;
+    outputAmount: bigint;
+    executionPrice: bigint;
+    validUntil: bigint;
 }
 export declare enum IntentType {
     SWAP = "SWAP",

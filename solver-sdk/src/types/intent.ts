@@ -35,6 +35,14 @@ export interface Intent {
   startTime?: Date; // When TWAP starts
 }
 
+// Auction status enum
+export enum AuctionStatus {
+  ACTIVE = 'Active',
+  SELECTING = 'Selecting',
+  COMPLETED = 'Completed',
+  CANCELLED = 'Cancelled',
+}
+
 // Dutch Auction state
 export interface DutchAuction {
   intentId: bigint;
@@ -45,6 +53,25 @@ export interface DutchAuction {
   isActive: boolean;
   winner: string | null;
   acceptedPrice: bigint;
+}
+
+// Sealed Bid Auction state
+export interface SealedBidAuction {
+  intentId: bigint;
+  startTime: bigint;
+  endTime: bigint;
+  solutionCount: number;
+  winner: string | null;
+  status: AuctionStatus;
+}
+
+// Solution submitted to auction
+export interface AuctionSolution {
+  intentId: bigint;
+  solver: string;
+  outputAmount: bigint;
+  executionPrice: bigint;
+  validUntil: bigint;
 }
 
 export enum IntentType {

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { IntentRecord, AuctionBid } from '@/app/lib/velox/types';
 import { Separator } from '../ui/separator';
-import { Timer, Trophy, Users, Clock, Medal } from 'lucide-react';
+import { Timer, Trophy, Users, Clock, Medal, ExternalLink, Info } from 'lucide-react';
+import { getExplorerUrl } from '@/app/lib/aptos';
 
 interface SealedBidAuctionSectionProps {
   intent: IntentRecord;
@@ -30,38 +31,16 @@ function formatBidTime(timestamp: number): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-// Generate mock bids for demo (in production, fetch from chain/indexer)
-function generateMockBids(intent: IntentRecord): AuctionBid[] {
-  if (intent.bids && intent.bids.length > 0) return intent.bids;
-
-  const bidCount = intent.bidCount ?? 3;
-  const bids: AuctionBid[] = [];
-  const baseAmount = intent.minAmountOut ?? BigInt(1000000000);
-
-  for (let i = 0; i < bidCount; i++) {
-    const multiplier = 1 + (Math.random() * 0.2); // 1.0x to 1.2x base
-    bids.push({
-      bidder: `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`,
-      amount: BigInt(Math.floor(Number(baseAmount) * multiplier)),
-      timestamp: intent.createdAt + (i * 10),
-      isWinner: i === 0 && intent.status === 'filled',
-    });
-  }
-
-  // Sort by amount descending (highest bid first)
-  return bids.sort((a, b) => Number(b.amount - a.amount));
-}
-
 export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps) {
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
-  const [bids, setBids] = useState<AuctionBid[]>([]);
 
   const isActive = intent.auctionStatus === 'active';
   const auctionEndTime = intent.auctionEndTime ?? (intent.createdAt + (intent.auctionDuration ?? 60));
 
-  useEffect(() => {
-    setBids(generateMockBids(intent));
-  }, [intent]);
+  // Use real bids from intent if available, sorted by amount descending
+  const bids = (intent.bids || []).sort((a, b) => Number(b.amount - a.amount));
+  const hasBidData = bids.length > 0;
+  const bidCount = intent.bidCount ?? 0;
 
   useEffect(() => {
     if (!isActive) {
@@ -111,7 +90,7 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
               <Users className="h-3 w-3" />
               <span className="text-xs">Total Bids</span>
             </div>
-            <p className="font-bold text-lg">{bids.length}</p>
+            <p className="font-bold text-lg">{hasBidData ? bids.length : bidCount}</p>
           </div>
           <div className="p-2 rounded bg-muted/30 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
@@ -119,7 +98,7 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
               <span className="text-xs">Highest Bid</span>
             </div>
             <p className="font-bold text-lg text-primary">
-              {bids.length > 0 ? formatAmount(bids[0].amount) : '--'}
+              {hasBidData ? formatAmount(bids[0].amount) : '--'}
             </p>
           </div>
         </div>
@@ -130,11 +109,19 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
             <Trophy className="h-4 w-4 text-primary" />
             Bid Leaderboard
           </h4>
-          <div className="h-[180px] overflow-y-auto rounded-lg border border-border">
+          <div className="min-h-[100px] max-h-[180px] overflow-y-auto rounded-lg border border-border">
             <div className="p-2 space-y-1">
-              {bids.length === 0 ? (
-                <div className="text-center text-sm text-muted-foreground py-6">
-                  No bids placed yet
+              {!hasBidData ? (
+                <div className="text-center py-6 px-3">
+                  <Info className="h-5 w-5 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    Bid details are sealed until auction ends
+                  </p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">
+                    {bidCount > 0
+                      ? `${bidCount} bid${bidCount > 1 ? 's' : ''} submitted`
+                      : 'No bids yet'}
+                  </p>
                 </div>
               ) : (
                 bids.map((bid, index) => (
@@ -144,7 +131,7 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
                       bid.isWinner
                         ? 'bg-primary/20 border border-primary/30'
                         : index === 0 && isActive
-                        ? 'bg-yellow-500/10 border border-yellow-500/30'
+                        ? 'bg-primary/10 border border-primary/30'
                         : 'bg-muted/30 hover:bg-muted/50'
                     }`}
                   >
@@ -160,12 +147,26 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-bold ${bid.isWinner ? 'text-primary' : ''}`}>
-                        {formatAmount(bid.amount)}
-                      </p>
-                      {bid.isWinner && (
-                        <span className="text-xs text-primary">Winner</span>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <p className={`font-bold ${bid.isWinner ? 'text-primary' : ''}`}>
+                          {formatAmount(bid.amount)}
+                        </p>
+                        {bid.isWinner && (
+                          <span className="text-xs text-primary">Winner</span>
+                        )}
+                      </div>
+                      {bid.txHash && (
+                        <a
+                          href={getExplorerUrl(bid.txHash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 rounded hover:bg-muted/50"
+                          onClick={(e) => e.stopPropagation()}
+                          title="View transaction"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                        </a>
                       )}
                     </div>
                   </div>

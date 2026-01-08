@@ -206,34 +206,57 @@ async function handleLimitOrderIntent(solver: VeloxSolver, intent: Intent): Prom
   console.log('Processing limit order...');
   console.log(`  Limit Price: ${intent.limitPrice}`);
   console.log(`  Partial Fill Allowed: ${intent.partialFillAllowed}`);
+  console.log(`  Expiry: ${intent.deadline.toISOString()}`);
 
-  // Check if current market price meets the limit price
-  const { canFill, executionPrice, outputAmount } = await solver.canFillLimitOrder(intent);
+  const PRICE_CHECK_INTERVAL_MS = 15000; // 15 seconds
 
-  if (!canFill) {
-    console.log(`Skipping limit order - price not met`);
+  // Continuously monitor price until fill or expiry
+  while (true) {
+    // Check if order has expired
+    const now = new Date();
+    if (now >= intent.deadline) {
+      console.log(`\n=== Limit Order Expired ===`);
+      console.log(`  Order ID: ${intent.id}`);
+      console.log(`  Expired at: ${intent.deadline.toISOString()}`);
+      return;
+    }
+
+    const timeToExpiry = Math.floor((intent.deadline.getTime() - now.getTime()) / 1000);
+    console.log(`\nChecking limit order price... (${timeToExpiry}s until expiry)`);
+
+    // Check if current market price meets the limit price
+    const { canFill, executionPrice, outputAmount } = await solver.canFillLimitOrder(intent);
+
+    if (canFill) {
+      console.log(`Limit price met! Filling order...`);
+      console.log(`  Fill amount: ${intent.inputAmount}`);
+      console.log(`  Output amount: ${outputAmount}`);
+      console.log(`  Execution price: ${executionPrice}`);
+
+      // For now, fill the entire order
+      // TODO: Support partial fills based on liquidity/strategy
+      const result = await solver.solveLimitOrder(intent.id, intent.inputAmount, outputAmount);
+
+      if (result.success) {
+        console.log(`\n=== Limit Order Filled Successfully! ===`);
+        console.log(`TX Hash: ${result.txHash}`);
+        console.log(`Fill Amount: ${intent.inputAmount}`);
+        console.log(`Output Amount: ${outputAmount}`);
+      } else {
+        console.log(`\n=== Limit Order Failed ===`);
+        console.log(`Error: ${result.error}`);
+      }
+      return;
+    }
+
+    // Price not met yet, log and wait
+    console.log(`  Price not met - waiting for market to move`);
     console.log(`  Required limit price: ${intent.limitPrice}`);
     console.log(`  Current execution price: ${executionPrice}`);
-    return;
-  }
+    console.log(`  Next check in ${PRICE_CHECK_INTERVAL_MS / 1000}s...`);
 
-  console.log(`Limit price met! Filling order...`);
-  console.log(`  Fill amount: ${intent.inputAmount}`);
-  console.log(`  Output amount: ${outputAmount}`);
-  console.log(`  Execution price: ${executionPrice}`);
-
-  // For now, fill the entire order
-  // TODO: Support partial fills based on liquidity/strategy
-  const result = await solver.solveLimitOrder(intent.id, intent.inputAmount, outputAmount);
-
-  if (result.success) {
-    console.log(`\n=== Limit Order Filled Successfully! ===`);
-    console.log(`TX Hash: ${result.txHash}`);
-    console.log(`Fill Amount: ${intent.inputAmount}`);
-    console.log(`Output Amount: ${outputAmount}`);
-  } else {
-    console.log(`\n=== Limit Order Failed ===`);
-    console.log(`Error: ${result.error}`);
+    // Wait before checking again
+    await new Promise(resolve => setTimeout(resolve, PRICE_CHECK_INTERVAL_MS));
   }
 }
 

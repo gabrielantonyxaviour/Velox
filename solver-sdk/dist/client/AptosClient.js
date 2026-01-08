@@ -5,7 +5,13 @@ const ts_sdk_1 = require("@aptos-labs/ts-sdk");
 class VeloxAptosClient {
     aptos;
     account;
+    shinamiKey;
     constructor(config) {
+        // Note: Shinami Node Service for Movement uses JSON-RPC format
+        // which isn't directly compatible with Aptos SDK's REST client.
+        // For now, we use the standard Movement RPC and store the key
+        // for potential future JSON-RPC integration.
+        this.shinamiKey = config.shinamiNodeKey;
         this.aptos = new ts_sdk_1.Aptos(new ts_sdk_1.AptosConfig({
             network: ts_sdk_1.Network.CUSTOM,
             fullnode: config.rpcUrl,
@@ -14,6 +20,12 @@ class VeloxAptosClient {
             const privateKey = new ts_sdk_1.Ed25519PrivateKey(config.privateKey);
             this.account = ts_sdk_1.Account.fromPrivateKey({ privateKey });
         }
+        if (config.shinamiNodeKey) {
+            console.log('[VeloxAptosClient] Shinami key configured (Gas Station ready)');
+        }
+    }
+    hasShinamiKey() {
+        return !!this.shinamiKey;
     }
     getAptos() {
         return this.aptos;

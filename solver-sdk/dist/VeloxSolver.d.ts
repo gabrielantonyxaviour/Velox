@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { Intent, DutchAuction } from './types/intent';
+import { Intent, DutchAuction, SealedBidAuction } from './types/intent';
 import { Solution, SolutionResult, SwapRoute, SolverStats } from './types/solution';
 export interface VeloxSolverConfig {
     rpcUrl: string;
@@ -9,6 +9,8 @@ export interface VeloxSolverConfig {
     pollingInterval?: number;
     /** Skip processing intents that existed before the solver started */
     skipExistingOnStartup?: boolean;
+    /** Shinami Node Service API key for enhanced RPC reliability */
+    shinamiNodeKey?: string;
 }
 export declare class VeloxSolver extends EventEmitter {
     private client;
@@ -96,6 +98,49 @@ export declare class VeloxSolver extends EventEmitter {
     monitorAndAcceptDutch(intentId: string, maxPrice: bigint, pollIntervalMs?: number): Promise<{
         txHash: string;
         price: bigint;
+    } | null>;
+    /**
+     * Check if a sealed bid auction is active for an intent
+     */
+    isSealedBidAuctionActive(intentId: string): Promise<boolean>;
+    /**
+     * Get sealed bid auction details
+     */
+    getSealedBidAuction(intentId: string): Promise<SealedBidAuction | null>;
+    /**
+     * Get time remaining for a sealed bid auction
+     */
+    getAuctionTimeRemaining(intentId: string): Promise<number>;
+    /**
+     * Get winner of a sealed bid auction
+     */
+    getAuctionWinner(intentId: string): Promise<string | null>;
+    /**
+     * Check if solver is the winner of a sealed bid auction
+     */
+    isAuctionWinner(intentId: string): Promise<boolean>;
+    /**
+     * Submit a bid to a sealed bid auction
+     * Calls auction::submit_solution
+     */
+    submitBid(intentId: string, outputAmount: bigint, executionPrice: bigint): Promise<SolutionResult>;
+    /**
+     * Close a sealed bid auction after duration ends
+     * Calls auction::close_auction
+     */
+    closeAuction(intentId: string): Promise<SolutionResult>;
+    /**
+     * Settle an intent from a completed sealed bid auction
+     * Only the winner can settle
+     * Calls settlement::settle_from_auction
+     */
+    settleFromAuction(intentId: string): Promise<SolutionResult>;
+    /**
+     * Monitor sealed bid auction and settle when won
+     * Returns null if auction not won
+     */
+    monitorAndSettleAuction(intentId: string, pollIntervalMs?: number): Promise<{
+        txHash: string;
     } | null>;
     getSolverStats(address?: string): Promise<SolverStats>;
     private pollIntents;

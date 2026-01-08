@@ -6,8 +6,10 @@ import { Card } from '@/app/components/ui/card';
 import { Label } from '@/app/components/ui/label';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
+import { TransactionConfirmDialog } from './transaction-confirm-dialog';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
+import { useTransactionConfirm, createDCADetails } from '@/app/hooks/use-transaction-confirm';
 import { submitDCAIntent, submitDCAIntentNative } from '@/app/lib/velox/transactions';
 import { fetchTokenBalance } from '@/app/lib/aptos';
 import { Loader2 } from 'lucide-react';
@@ -33,6 +35,7 @@ const FREQUENCY_OPTIONS = [
 
 export function DCAForm({ onSuccess, onError }: DCAFormProps) {
   const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
   const [outputToken, setOutputToken] = useState<Token | null>(null);
@@ -93,7 +96,7 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
     return null;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -102,8 +105,25 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
 
     if (!walletAddress || !inputToken || !outputToken) return;
 
-    setIsLoading(true);
     setError(null);
+
+    // Open confirmation dialog
+    const intervalSeconds = intervalDays * 24 * 60 * 60;
+    const details = createDCADetails(
+      inputToken,
+      outputToken,
+      totalInvestment,
+      amountPerPeriod,
+      totalPeriods,
+      intervalSeconds
+    );
+    txConfirm.openConfirmation(details);
+  };
+
+  const executeTransaction = async () => {
+    if (!walletAddress || !inputToken || !outputToken) return;
+
+    setIsLoading(true);
 
     try {
       const amount = BigInt(Math.floor(parseFloat(amountPerPeriod) * Math.pow(10, inputToken.decimals)));
@@ -137,6 +157,7 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
       }
 
       setAmountPerPeriod('');
+      txConfirm.closeConfirmation();
       onSuccess?.(txHash);
     } catch (err: any) {
       const errorMsg = err.message || 'Transaction failed';
@@ -246,7 +267,7 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
         </div>
 
         {/* Info Box */}
-        <div className="p-3 bg-amber-500/10 text-amber-400 rounded-lg text-sm">
+        <div className="p-3 bg-primary/10 text-primary rounded-lg text-sm">
           DCA helps reduce the impact of volatility by spreading purchases over time.
         </div>
 
@@ -276,6 +297,16 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
           )}
         </Button>
       </div>
+
+      {/* Confirmation Dialog */}
+      <TransactionConfirmDialog
+        open={txConfirm.isOpen}
+        onOpenChange={txConfirm.closeConfirmation}
+        details={txConfirm.details}
+        onConfirm={executeTransaction}
+        onCancel={txConfirm.closeConfirmation}
+        isLoading={isLoading}
+      />
     </Card>
   );
 }

@@ -74,9 +74,9 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
 
       <div className="bg-muted/50 rounded-lg p-4 mb-4">
         <div className="flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-yellow-500 mt-0.5" />
+          <AlertCircle className="w-4 h-4 text-primary mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-yellow-500">Requirements</p>
+            <p className="font-medium text-primary">Requirements</p>
             <ul className="text-muted-foreground list-disc list-inside mt-1">
               <li>Minimum stake: 0.01 MOVE</li>
               <li>Initial reputation: 50%</li>
@@ -107,8 +107,8 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
         )}
 
         {success && (
-          <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-            <p className="text-sm text-green-500">Successfully registered as a solver!</p>
+          <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+            <p className="text-sm text-primary">Successfully registered as a solver!</p>
           </div>
         )}
 

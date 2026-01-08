@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const ts_sdk_1 = require("@aptos-labs/ts-sdk");
-const VELOX_ADDRESS = '0x5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840';
+const VELOX_ADDRESS = process.env.VELOX_ADDRESS || '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
 const RPC_URL = 'https://testnet.movementnetwork.xyz/v1';
 // Use user private key (user calls faucet for themselves)
 const USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY || '0x399a74dd2eab1d1a8dfc98cd5d7a672fa60f302712960583d270e7bb4ba0a27a';

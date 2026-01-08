@@ -137,10 +137,10 @@ export default function ExplorerPage() {
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Activity className="h-4 w-4" /> Recent Intents
                   </CardTitle>
-                  <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-                    <TabsList className="h-8 flex-wrap">
+                  <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)} className="w-full">
+                    <TabsList className="h-8 w-full justify-between">
                       {FILTER_TABS.map(tab => (
-                        <TabsTrigger key={tab.value} value={tab.value} className="text-xs px-2 py-1">
+                        <TabsTrigger key={tab.value} value={tab.value} className="text-xs px-4 py-1 flex-1">
                           {tab.label}
                         </TabsTrigger>
                       ))}
@@ -205,7 +205,7 @@ export default function ExplorerPage() {
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Vol: {formatAmount(solver.totalVolume)}
+                          Vol: {formatAmount(solver.totalVolume)} MOVE
                         </p>
                       </div>
                     ))}

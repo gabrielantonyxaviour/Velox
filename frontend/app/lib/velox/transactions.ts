@@ -7,6 +7,27 @@ import {
 import { aptos, VELOX_ADDRESS, toHex } from '../aptos';
 import { DutchAuction } from './types';
 import { sponsoredSubmit, isSponsorshipEnabled } from '../shinami';
+import { storeAuctionIntent } from './auction-storage';
+
+// Helper to extract intent ID from transaction events
+async function extractIntentIdFromTx(txHash: string): Promise<bigint | null> {
+  try {
+    const tx = await aptos.getTransactionByHash({ transactionHash: txHash });
+    if ('events' in tx && Array.isArray(tx.events)) {
+      for (const event of tx.events) {
+        if (event.type.includes('::submission::IntentCreated')) {
+          const intentId = (event.data as { intent_id?: string })?.intent_id;
+          if (intentId) {
+            return BigInt(intentId);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Velox] Failed to extract intent ID from tx:', e);
+  }
+  return null;
+}
 
 export interface SignRawHashFunction {
   (params: { address: string; chainType: 'aptos'; hash: `0x${string}` }): Promise<{
@@ -351,7 +372,7 @@ export async function submitSwapWithAuction(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return smartSubmitWithPrivy(
+  const txHash = await smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_swap_with_auction`,
     [
@@ -367,6 +388,14 @@ export async function submitSwapWithAuction(
     publicKeyHex,
     signRawHash
   );
+
+  // Extract intent ID and store auction info
+  const intentId = await extractIntentIdFromTx(txHash);
+  if (intentId !== null) {
+    storeAuctionIntent(intentId, 'sealed-bid', { duration: auctionDuration });
+  }
+
+  return txHash;
 }
 
 export async function submitSwapWithAuctionNative(
@@ -401,6 +430,12 @@ export async function submitSwapWithAuctionNative(
     throw new Error('Transaction failed');
   }
 
+  // Extract intent ID and store auction info
+  const intentId = await extractIntentIdFromTx(response.hash);
+  if (intentId !== null) {
+    storeAuctionIntent(intentId, 'sealed-bid', { duration: auctionDuration });
+  }
+
   return response.hash;
 }
 
@@ -418,7 +453,7 @@ export async function submitSwapWithDutchAuction(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return smartSubmitWithPrivy(
+  const txHash = await smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_swap_with_dutch_auction`,
     [
@@ -435,6 +470,18 @@ export async function submitSwapWithDutchAuction(
     publicKeyHex,
     signRawHash
   );
+
+  // Extract intent ID and store auction info
+  const intentId = await extractIntentIdFromTx(txHash);
+  if (intentId !== null) {
+    storeAuctionIntent(intentId, 'dutch', {
+      duration: auctionDuration,
+      startPrice,
+      endPrice: minAmountOut,
+    });
+  }
+
+  return txHash;
 }
 
 export async function submitSwapWithDutchAuctionNative(
@@ -469,6 +516,16 @@ export async function submitSwapWithDutchAuctionNative(
   const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
   if (!executed.success) {
     throw new Error('Transaction failed');
+  }
+
+  // Extract intent ID and store auction info
+  const intentId = await extractIntentIdFromTx(response.hash);
+  if (intentId !== null) {
+    storeAuctionIntent(intentId, 'dutch', {
+      duration: auctionDuration,
+      startPrice,
+      endPrice: minAmountOut,
+    });
   }
 
   return response.hash;

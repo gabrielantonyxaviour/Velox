@@ -4,16 +4,22 @@ require("dotenv/config");
 const VeloxSolver_1 = require("../VeloxSolver");
 const intent_1 = require("../types/intent");
 async function main() {
+    const shinamiNodeKey = process.env.SHINAMI_KEY;
     const solver = new VeloxSolver_1.VeloxSolver({
         rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
         veloxAddress: process.env.VELOX_ADDRESS ||
-            '0x5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840',
+            '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
         privateKey: process.env.SOLVER_PRIVATE_KEY,
-        pollingInterval: 1000,
+        pollingInterval: 10000, // 10 seconds to avoid rate limiting
         // Skip processing intents that existed before solver started - only react to new ones
         skipExistingOnStartup: true,
+        // Shinami Node Service for enhanced RPC reliability (optional)
+        shinamiNodeKey,
     });
     console.log('Starting Velox Basic Solver...');
+    if (shinamiNodeKey) {
+        console.log('Shinami: CONFIGURED');
+    }
     console.log('Listening for pending intents...\n');
     // Handle errors
     solver.on('error', (error) => {
@@ -81,6 +87,21 @@ async function main() {
     });
 }
 async function handleSwapIntent(solver, intent) {
+    // First, check if there's an active sealed bid auction for this intent
+    const hasAuction = await solver.isSealedBidAuctionActive(intent.id);
+    if (hasAuction) {
+        console.log('Intent has an active sealed bid auction - handling via auction flow...');
+        await handleSealedBidAuction(solver, intent);
+        return;
+    }
+    // Also check for Dutch auction
+    const dutch = await solver.getDutchAuction(intent.id);
+    if (dutch && dutch.isActive) {
+        console.log('Intent has an active Dutch auction - skipping (use dutch-solver instead)');
+        return;
+    }
+    // No auction - solve directly
+    console.log('No active auction - solving directly...');
     // Calculate optimal solution using real-time CoinGecko prices
     console.log('Calculating optimal solution for swap...');
     const solution = await solver.calculateOptimalSolution(intent);
@@ -107,34 +128,101 @@ async function handleSwapIntent(solver, intent) {
         console.log(`Error: ${result.error}`);
     }
 }
+async function handleSealedBidAuction(solver, intent) {
+    // Get auction details
+    const auction = await solver.getSealedBidAuction(intent.id);
+    if (!auction) {
+        console.log('Could not get auction details');
+        return;
+    }
+    console.log(`\n=== Sealed Bid Auction Details ===`);
+    console.log(`Start Time: ${new Date(Number(auction.startTime) * 1000).toISOString()}`);
+    console.log(`End Time: ${new Date(Number(auction.endTime) * 1000).toISOString()}`);
+    console.log(`Status: ${auction.status}`);
+    console.log(`Solutions submitted: ${auction.solutionCount}`);
+    const timeRemaining = await solver.getAuctionTimeRemaining(intent.id);
+    console.log(`Time remaining: ${timeRemaining} seconds`);
+    // Calculate our bid
+    console.log('Calculating optimal bid...');
+    const solution = await solver.calculateOptimalSolution(intent);
+    console.log(`Our bid:`);
+    console.log(`  Output Amount: ${solution.outputAmount}`);
+    console.log(`  Execution Price: ${solution.executionPrice}`);
+    // Check minimum output
+    if (intent.minOutputAmount && solution.outputAmount < intent.minOutputAmount) {
+        console.log(`Skipping - cannot meet minimum output`);
+        console.log(`  Min required: ${intent.minOutputAmount}`);
+        console.log(`  We can provide: ${solution.outputAmount}`);
+        return;
+    }
+    // Submit our bid
+    console.log('Submitting bid to auction...');
+    const bidResult = await solver.submitBid(intent.id, solution.outputAmount, solution.executionPrice);
+    if (!bidResult.success) {
+        console.log(`Failed to submit bid: ${bidResult.error}`);
+        return;
+    }
+    console.log(`\n=== Bid Submitted Successfully! ===`);
+    console.log(`TX Hash: ${bidResult.txHash}`);
+    console.log(`Output Amount: ${solution.outputAmount}`);
+    console.log(`Now waiting for auction to complete...`);
+    // Monitor auction and settle if we win
+    const settleResult = await solver.monitorAndSettleAuction(intent.id, 2000);
+    if (settleResult) {
+        console.log(`\n=== Won Auction & Settled Successfully! ===`);
+        console.log(`Settle TX: ${settleResult.txHash}`);
+    }
+    else {
+        console.log(`\n=== Did not win the auction ===`);
+    }
+}
 async function handleLimitOrderIntent(solver, intent) {
     console.log('Processing limit order...');
     console.log(`  Limit Price: ${intent.limitPrice}`);
     console.log(`  Partial Fill Allowed: ${intent.partialFillAllowed}`);
-    // Check if current market price meets the limit price
-    const { canFill, executionPrice, outputAmount } = await solver.canFillLimitOrder(intent);
-    if (!canFill) {
-        console.log(`Skipping limit order - price not met`);
+    console.log(`  Expiry: ${intent.deadline.toISOString()}`);
+    const PRICE_CHECK_INTERVAL_MS = 15000; // 15 seconds
+    // Continuously monitor price until fill or expiry
+    while (true) {
+        // Check if order has expired
+        const now = new Date();
+        if (now >= intent.deadline) {
+            console.log(`\n=== Limit Order Expired ===`);
+            console.log(`  Order ID: ${intent.id}`);
+            console.log(`  Expired at: ${intent.deadline.toISOString()}`);
+            return;
+        }
+        const timeToExpiry = Math.floor((intent.deadline.getTime() - now.getTime()) / 1000);
+        console.log(`\nChecking limit order price... (${timeToExpiry}s until expiry)`);
+        // Check if current market price meets the limit price
+        const { canFill, executionPrice, outputAmount } = await solver.canFillLimitOrder(intent);
+        if (canFill) {
+            console.log(`Limit price met! Filling order...`);
+            console.log(`  Fill amount: ${intent.inputAmount}`);
+            console.log(`  Output amount: ${outputAmount}`);
+            console.log(`  Execution price: ${executionPrice}`);
+            // For now, fill the entire order
+            // TODO: Support partial fills based on liquidity/strategy
+            const result = await solver.solveLimitOrder(intent.id, intent.inputAmount, outputAmount);
+            if (result.success) {
+                console.log(`\n=== Limit Order Filled Successfully! ===`);
+                console.log(`TX Hash: ${result.txHash}`);
+                console.log(`Fill Amount: ${intent.inputAmount}`);
+                console.log(`Output Amount: ${outputAmount}`);
+            }
+            else {
+                console.log(`\n=== Limit Order Failed ===`);
+                console.log(`Error: ${result.error}`);
+            }
+            return;
+        }
+        // Price not met yet, log and wait
+        console.log(`  Price not met - waiting for market to move`);
         console.log(`  Required limit price: ${intent.limitPrice}`);
         console.log(`  Current execution price: ${executionPrice}`);
-        return;
-    }
-    console.log(`Limit price met! Filling order...`);
-    console.log(`  Fill amount: ${intent.inputAmount}`);
-    console.log(`  Output amount: ${outputAmount}`);
-    console.log(`  Execution price: ${executionPrice}`);
-    // For now, fill the entire order
-    // TODO: Support partial fills based on liquidity/strategy
-    const result = await solver.solveLimitOrder(intent.id, intent.inputAmount, outputAmount);
-    if (result.success) {
-        console.log(`\n=== Limit Order Filled Successfully! ===`);
-        console.log(`TX Hash: ${result.txHash}`);
-        console.log(`Fill Amount: ${intent.inputAmount}`);
-        console.log(`Output Amount: ${outputAmount}`);
-    }
-    else {
-        console.log(`\n=== Limit Order Failed ===`);
-        console.log(`Error: ${result.error}`);
+        console.log(`  Next check in ${PRICE_CHECK_INTERVAL_MS / 1000}s...`);
+        // Wait before checking again
+        await new Promise(resolve => setTimeout(resolve, PRICE_CHECK_INTERVAL_MS));
     }
 }
 async function handleDCAIntent(solver, intent) {

@@ -69,11 +69,11 @@ export function SolverLookup() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {solver.isActive ? (
-                <CheckCircle className="w-5 h-5 text-green-500" />
+                <CheckCircle className="w-5 h-5 text-primary" />
               ) : (
-                <XCircle className="w-5 h-5 text-red-500" />
+                <XCircle className="w-5 h-5 text-destructive" />
               )}
-              <span className={solver.isActive ? 'text-green-500' : 'text-red-500'}>
+              <span className={solver.isActive ? 'text-primary' : 'text-destructive'}>
                 {solver.isActive ? 'Active' : 'Inactive'}
               </span>
             </div>
@@ -117,11 +117,11 @@ export function SolverLookup() {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Successful</span>
-              <span className="text-green-500">{solver.successfulFills}</span>
+              <span className="text-primary">{solver.successfulFills}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Failed</span>
-              <span className="text-red-500">{solver.failedFills}</span>
+              <span className="text-destructive">{solver.failedFills}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Avg Slippage</span>

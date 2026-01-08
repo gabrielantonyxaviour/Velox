@@ -32,7 +32,8 @@ function formatAmount(amount: bigint, decimals: number = 8): string {
 }
 
 function formatPrice(price: bigint): string {
-  return (Number(price) / 10000).toFixed(4);
+  // Prices are stored as token amounts with 8 decimals
+  return (Number(price) / 1e8).toFixed(4);
 }
 
 function getTokenSymbol(address: string): string {

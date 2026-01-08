@@ -5,8 +5,10 @@ import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
+import { TransactionConfirmDialog } from './transaction-confirm-dialog';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
+import { useTransactionConfirm, createSwapDetails } from '@/app/hooks/use-transaction-confirm';
 import { submitSwapIntent, submitSwapIntentNative } from '@/app/lib/velox/transactions';
 import { fetchTokenBalance } from '@/app/lib/aptos';
 import { calculateSwapOutput, formatPrice } from '@/app/lib/pricing';
@@ -28,6 +30,7 @@ const DEFAULT_SLIPPAGE = 0.5; // 0.5%
 
 export function SwapForm({ onSuccess, onError }: SwapFormProps) {
   const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
   const [outputToken, setOutputToken] = useState<Token | null>(null);
@@ -130,7 +133,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
     return null;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -139,8 +142,24 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
 
     if (!walletAddress || !inputToken || !outputToken) return;
 
-    setIsLoading(true);
     setError(null);
+
+    // Open confirmation dialog
+    const details = createSwapDetails(
+      inputToken,
+      outputToken,
+      inputAmount,
+      minOutputAmount || '0',
+      deadline,
+      DEFAULT_SLIPPAGE
+    );
+    txConfirm.openConfirmation(details);
+  };
+
+  const executeTransaction = async () => {
+    if (!walletAddress || !inputToken || !outputToken) return;
+
+    setIsLoading(true);
 
     try {
       const amountIn = BigInt(Math.floor(parseFloat(inputAmount) * Math.pow(10, inputToken.decimals)));
@@ -177,6 +196,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
       // Reset form on success
       setInputAmount('');
       setMinOutputAmount('');
+      txConfirm.closeConfirmation();
       onSuccess?.(txHash);
     } catch (err: any) {
       const errorMsg = err.message || 'Transaction failed';
@@ -317,6 +337,16 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
           )}
         </Button>
       </div>
+
+      {/* Confirmation Dialog */}
+      <TransactionConfirmDialog
+        open={txConfirm.isOpen}
+        onOpenChange={txConfirm.closeConfirmation}
+        details={txConfirm.details}
+        onConfirm={executeTransaction}
+        onCancel={txConfirm.closeConfirmation}
+        isLoading={isLoading}
+      />
     </Card>
   );
 }

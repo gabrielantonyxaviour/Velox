@@ -124,12 +124,12 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
         <h2 className="text-lg font-semibold">My Solver Status</h2>
         <div className="flex items-center gap-2">
           {solver.isActive ? (
-            <span className="flex items-center gap-1 text-sm text-green-500">
+            <span className="flex items-center gap-1 text-sm text-primary">
               <CheckCircle className="w-4 h-4" />
               Active
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-sm text-red-500">
+            <span className="flex items-center gap-1 text-sm text-destructive">
               <XCircle className="w-4 h-4" />
               Inactive
             </span>
@@ -165,7 +165,7 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
         </div>
         <div className="bg-muted/50 rounded-lg p-3 text-center">
           <p className="text-xs text-muted-foreground">Success Rate</p>
-          <p className="text-lg font-bold text-green-500">{successRate}%</p>
+          <p className="text-lg font-bold text-primary">{successRate}%</p>
         </div>
         <div className="bg-muted/50 rounded-lg p-3 text-center">
           <p className="text-xs text-muted-foreground">Total Solved</p>
@@ -176,11 +176,11 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
       {/* Detailed Stats */}
       <div className="grid grid-cols-3 gap-4 text-sm mb-6">
         <div className="text-center">
-          <p className="text-green-500 font-medium">{solver.successfulFills}</p>
+          <p className="text-primary font-medium">{solver.successfulFills}</p>
           <p className="text-xs text-muted-foreground">Successful</p>
         </div>
         <div className="text-center">
-          <p className="text-red-500 font-medium">{solver.failedFills}</p>
+          <p className="text-destructive font-medium">{solver.failedFills}</p>
           <p className="text-xs text-muted-foreground">Failed</p>
         </div>
         <div className="text-center">

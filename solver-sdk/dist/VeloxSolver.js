@@ -19,12 +19,16 @@ class VeloxSolver extends events_1.EventEmitter {
         this.client = new AptosClient_1.VeloxAptosClient({
             rpcUrl: config.rpcUrl,
             privateKey: config.privateKey,
+            shinamiNodeKey: config.shinamiNodeKey,
         });
         this.veloxAddress = config.veloxAddress;
         this.pollingInterval = config.pollingInterval || 1000;
         this.skipExistingOnStartup = config.skipExistingOnStartup ?? false;
         if (config.graphqlUrl) {
             this.graphql = new GraphQLClient_1.VeloxGraphQLClient({ url: config.graphqlUrl });
+        }
+        if (config.shinamiNodeKey) {
+            console.log('[VeloxSolver] Shinami Node Service enabled for enhanced reliability');
         }
     }
     // ============ Intent Discovery ============
@@ -395,16 +399,19 @@ class VeloxSolver extends events_1.EventEmitter {
                 typeArguments: [],
                 functionArguments: [this.veloxAddress, intentId],
             });
-            const [startTime, startPrice, endPrice, duration, isActive, winner, acceptedPrice] = result;
+            // View returns a single object with named properties
+            const data = result[0];
+            const winnerVec = data.winner.vec;
+            const winnerAddress = winnerVec.length > 0 && winnerVec[0] ? winnerVec[0] : null;
             return {
-                intentId: BigInt(intentId),
-                startTime: BigInt(startTime),
-                startPrice: BigInt(startPrice),
-                endPrice: BigInt(endPrice),
-                duration: BigInt(duration),
-                isActive: isActive,
-                winner: winner === '0x0' ? null : winner,
-                acceptedPrice: BigInt(acceptedPrice),
+                intentId: BigInt(data.intent_id),
+                startTime: BigInt(data.start_time),
+                startPrice: BigInt(data.start_price),
+                endPrice: BigInt(data.end_price),
+                duration: BigInt(data.duration),
+                isActive: data.is_active,
+                winner: winnerAddress,
+                acceptedPrice: BigInt(data.accepted_price),
             };
         }
         catch (error) {
@@ -522,6 +529,248 @@ class VeloxSolver extends events_1.EventEmitter {
             await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
         }
     }
+    // ============ Sealed Bid Auction Queries ============
+    /**
+     * Check if a sealed bid auction is active for an intent
+     */
+    async isSealedBidAuctionActive(intentId) {
+        try {
+            const result = await this.client.view({
+                function: `${this.veloxAddress}::auction::is_auction_active`,
+                typeArguments: [],
+                functionArguments: [this.veloxAddress, intentId],
+            });
+            return result[0] ?? false;
+        }
+        catch (error) {
+            // Auction may not exist
+            return false;
+        }
+    }
+    /**
+     * Get sealed bid auction details
+     */
+    async getSealedBidAuction(intentId) {
+        try {
+            const result = await this.client.view({
+                function: `${this.veloxAddress}::auction::get_auction`,
+                typeArguments: [],
+                functionArguments: [this.veloxAddress, intentId],
+            });
+            const data = result[0];
+            const winnerVec = data.winner.vec;
+            const winnerAddress = winnerVec.length > 0 && winnerVec[0] ? winnerVec[0] : null;
+            // Parse status from __variant__ pattern or string
+            let status = intent_1.AuctionStatus.ACTIVE;
+            if (typeof data.status === 'object' && '__variant__' in data.status) {
+                const variant = data.status.__variant__;
+                if (variant === 'Active')
+                    status = intent_1.AuctionStatus.ACTIVE;
+                else if (variant === 'Selecting')
+                    status = intent_1.AuctionStatus.SELECTING;
+                else if (variant === 'Completed')
+                    status = intent_1.AuctionStatus.COMPLETED;
+                else if (variant === 'Cancelled')
+                    status = intent_1.AuctionStatus.CANCELLED;
+            }
+            return {
+                intentId: BigInt(data.intent_id),
+                startTime: BigInt(data.start_time),
+                endTime: BigInt(data.end_time),
+                solutionCount: Array.isArray(data.solutions) ? data.solutions.length : 0,
+                winner: winnerAddress,
+                status,
+            };
+        }
+        catch (error) {
+            console.error(`Error getting sealed bid auction:`, error);
+            return null;
+        }
+    }
+    /**
+     * Get time remaining for a sealed bid auction
+     */
+    async getAuctionTimeRemaining(intentId) {
+        try {
+            const result = await this.client.view({
+                function: `${this.veloxAddress}::auction::get_time_remaining`,
+                typeArguments: [],
+                functionArguments: [this.veloxAddress, intentId],
+            });
+            return parseInt(result[0] || '0');
+        }
+        catch (error) {
+            console.error(`Error getting auction time remaining:`, error);
+            return 0;
+        }
+    }
+    /**
+     * Get winner of a sealed bid auction
+     */
+    async getAuctionWinner(intentId) {
+        try {
+            const result = await this.client.view({
+                function: `${this.veloxAddress}::auction::get_winner`,
+                typeArguments: [],
+                functionArguments: [this.veloxAddress, intentId],
+            });
+            const winnerVec = result[0]?.vec;
+            return winnerVec && winnerVec.length > 0 && winnerVec[0] ? winnerVec[0] : null;
+        }
+        catch (error) {
+            console.error(`Error getting auction winner:`, error);
+            return null;
+        }
+    }
+    /**
+     * Check if solver is the winner of a sealed bid auction
+     */
+    async isAuctionWinner(intentId) {
+        const winner = await this.getAuctionWinner(intentId);
+        if (!winner)
+            return false;
+        const solverAddress = this.client.getAccountAddress();
+        return winner.toLowerCase() === solverAddress?.toLowerCase();
+    }
+    // ============ Sealed Bid Auction Transactions ============
+    /**
+     * Submit a bid to a sealed bid auction
+     * Calls auction::submit_solution
+     */
+    async submitBid(intentId, outputAmount, executionPrice) {
+        if (!this.client.hasAccount()) {
+            throw new Error('Solver account not configured');
+        }
+        console.log(`Calling submit_solution (bid):`);
+        console.log(`  Auction State: ${this.veloxAddress}`);
+        console.log(`  Solver Registry: ${this.veloxAddress}`);
+        console.log(`  Intent ID: ${intentId}`);
+        console.log(`  Output Amount: ${outputAmount}`);
+        console.log(`  Execution Price: ${executionPrice}`);
+        try {
+            const txHash = await this.client.submitTransaction({
+                function: `${this.veloxAddress}::auction::submit_solution`,
+                typeArguments: [],
+                functionArguments: [
+                    this.veloxAddress, // auction_state_addr
+                    this.veloxAddress, // solver_registry_addr
+                    intentId,
+                    outputAmount.toString(),
+                    executionPrice.toString(),
+                ],
+            });
+            console.log(`submit_solution (bid) transaction successful: ${txHash}`);
+            return { success: true, txHash };
+        }
+        catch (error) {
+            console.error(`submit_solution (bid) failed:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+    /**
+     * Close a sealed bid auction after duration ends
+     * Calls auction::close_auction
+     */
+    async closeAuction(intentId) {
+        console.log(`Calling close_auction:`);
+        console.log(`  Auction State: ${this.veloxAddress}`);
+        console.log(`  Intent ID: ${intentId}`);
+        try {
+            const txHash = await this.client.submitTransaction({
+                function: `${this.veloxAddress}::auction::close_auction`,
+                typeArguments: [],
+                functionArguments: [
+                    this.veloxAddress, // auction_state_addr
+                    this.veloxAddress, // solver_registry_addr
+                    intentId,
+                ],
+            });
+            console.log(`close_auction transaction successful: ${txHash}`);
+            return { success: true, txHash };
+        }
+        catch (error) {
+            console.error(`close_auction failed:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+    /**
+     * Settle an intent from a completed sealed bid auction
+     * Only the winner can settle
+     * Calls settlement::settle_from_auction
+     */
+    async settleFromAuction(intentId) {
+        if (!this.client.hasAccount()) {
+            throw new Error('Solver account not configured');
+        }
+        console.log(`Calling settle_from_auction:`);
+        console.log(`  Registry: ${this.veloxAddress}`);
+        console.log(`  Auction State: ${this.veloxAddress}`);
+        console.log(`  Intent ID: ${intentId}`);
+        try {
+            const txHash = await this.client.submitTransaction({
+                function: `${this.veloxAddress}::settlement::settle_from_auction`,
+                typeArguments: [],
+                functionArguments: [
+                    this.veloxAddress, // registry_addr
+                    this.veloxAddress, // auction_state_addr
+                    intentId,
+                ],
+            });
+            console.log(`settle_from_auction transaction successful: ${txHash}`);
+            return { success: true, txHash };
+        }
+        catch (error) {
+            console.error(`settle_from_auction failed:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+    /**
+     * Monitor sealed bid auction and settle when won
+     * Returns null if auction not won
+     */
+    async monitorAndSettleAuction(intentId, pollIntervalMs = 2000) {
+        while (true) {
+            const auction = await this.getSealedBidAuction(intentId);
+            if (!auction) {
+                console.log('Auction not found');
+                return null;
+            }
+            console.log(`Auction status: ${auction.status}, solutions: ${auction.solutionCount}`);
+            // Check if auction is completed
+            if (auction.status === intent_1.AuctionStatus.COMPLETED) {
+                // Check if we won
+                const isWinner = await this.isAuctionWinner(intentId);
+                if (isWinner) {
+                    console.log('We won the auction! Settling...');
+                    const result = await this.settleFromAuction(intentId);
+                    if (result.success && result.txHash) {
+                        return { txHash: result.txHash };
+                    }
+                    console.error('Failed to settle:', result.error);
+                    return null;
+                }
+                else {
+                    console.log('Auction completed but we did not win');
+                    return null;
+                }
+            }
+            // Check if auction was cancelled
+            if (auction.status === intent_1.AuctionStatus.CANCELLED) {
+                console.log('Auction was cancelled');
+                return null;
+            }
+            // Check if we should try to close the auction
+            const timeRemaining = await this.getAuctionTimeRemaining(intentId);
+            if (timeRemaining === 0 && (auction.status === intent_1.AuctionStatus.ACTIVE || auction.status === intent_1.AuctionStatus.SELECTING)) {
+                console.log('Auction time expired, attempting to close...');
+                const closeResult = await this.closeAuction(intentId);
+                if (!closeResult.success) {
+                    console.log('Failed to close auction:', closeResult.error);
+                }
+            }
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        }
+    }
     // ============ Solver Stats ============
     async getSolverStats(address) {
         const solverAddress = address || this.client.getAccountAddress();
@@ -584,6 +833,30 @@ class VeloxSolver extends events_1.EventEmitter {
             2: intent_1.IntentStatus.FILLED,
             3: intent_1.IntentStatus.CANCELLED,
             4: intent_1.IntentStatus.EXPIRED,
+        };
+        // Map for Move 2.0 enum __variant__ pattern
+        const statusVariantMap = {
+            'Pending': intent_1.IntentStatus.PENDING,
+            'PartiallyFilled': intent_1.IntentStatus.PARTIALLY_FILLED,
+            'Filled': intent_1.IntentStatus.FILLED,
+            'Cancelled': intent_1.IntentStatus.CANCELLED,
+            'Expired': intent_1.IntentStatus.EXPIRED,
+        };
+        // Helper to parse status from either number or __variant__ object
+        const parseStatus = (status) => {
+            if (typeof status === 'number') {
+                return statusMap[status] ?? intent_1.IntentStatus.PENDING;
+            }
+            if (status && typeof status === 'object' && '__variant__' in status) {
+                const variant = status.__variant__;
+                if (typeof variant === 'string') {
+                    const mapped = statusVariantMap[variant];
+                    if (mapped !== undefined) {
+                        return mapped;
+                    }
+                }
+            }
+            return intent_1.IntentStatus.PENDING;
         };
         // Safe string extraction helper
         const safeGetString = (obj, key) => {
@@ -707,7 +980,7 @@ class VeloxSolver extends events_1.EventEmitter {
             inputAmount: BigInt(amountIn),
             minOutputAmount: minAmountOut !== '0' ? BigInt(minAmountOut) : undefined,
             deadline: new Date(parseInt(deadline) * 1000),
-            status: statusMap[Number(record.status ?? 0)] || intent_1.IntentStatus.PENDING,
+            status: parseStatus(record.status),
             createdAt: new Date(parseInt(safeGetString(record, 'created_at')) * 1000),
             limitPrice: intent?.limit_price ? BigInt(safeGetString(intent, 'limit_price')) : undefined,
             partialFillAllowed: Boolean(intent?.partial_fill_allowed ?? intent?.partial_fill),

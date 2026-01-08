@@ -104,7 +104,7 @@ async function main() {
     const solver = new AdvancedSolver({
         rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
         veloxAddress: process.env.VELOX_ADDRESS ||
-            '0x1a4532491c40a0202947316d96520ba98f33124b0a69b0715c1aa86d2e4a82f8',
+            '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
         privateKey: process.env.SOLVER_PRIVATE_KEY || '',
         minProfitBps: parseInt(process.env.MIN_PROFIT_BPS || '10'),
         maxConcurrentIntents: parseInt(process.env.MAX_CONCURRENT || '5'),

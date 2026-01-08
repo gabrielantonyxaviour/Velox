@@ -5,11 +5,11 @@ const VeloxSolver_1 = require("../VeloxSolver");
 const intent_1 = require("../types/intent");
 async function main() {
     const solver = new VeloxSolver_1.VeloxSolver({
-        rpcUrl: process.env.RPC_URL || 'https://testnet.bardock.movementnetwork.xyz/v1',
+        rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
         veloxAddress: process.env.VELOX_ADDRESS ||
-            '0x5cf7138d960b59b714b1d05774fdc2c26ae3f6d9f60808981f5d3c7e6004f840',
+            '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
         privateKey: process.env.SOLVER_PRIVATE_KEY,
-        pollingInterval: 500, // Faster polling for Dutch auctions
+        pollingInterval: 5000, // 5 seconds to avoid rate limiting
         skipExistingOnStartup: true,
     });
     console.log('Starting Velox Dutch Auction Solver...');
@@ -18,11 +18,17 @@ async function main() {
     solver.on('error', (error) => {
         console.error('Solver error:', error.message);
     });
-    // Listen for new intents with Dutch auction type
+    // Listen for new intents - check all SWAP intents for Dutch auctions
     solver.startIntentStream(async (intent) => {
-        // Only handle intents with Dutch auction type
-        if (intent.auctionType !== intent_1.AuctionType.DUTCH) {
-            console.log(`Skipping intent ${intent.id} - not a Dutch auction`);
+        // Only handle SWAP intents that might have Dutch auctions
+        if (intent.type !== intent_1.IntentType.SWAP) {
+            console.log(`Skipping intent ${intent.id} - not a SWAP type`);
+            return;
+        }
+        // Check if this intent has a Dutch auction associated with it
+        const dutch = await solver.getDutchAuction(intent.id);
+        if (!dutch || !dutch.isActive) {
+            console.log(`Skipping intent ${intent.id} - no active Dutch auction`);
             return;
         }
         console.log(`\n=== New Dutch Auction Intent ===`);
@@ -32,7 +38,7 @@ async function main() {
         console.log(`Input: ${intent.inputAmount} ${intent.inputToken.address}`);
         console.log(`Output Token: ${intent.outputToken.address}`);
         try {
-            await handleDutchAuction(solver, intent);
+            await handleDutchAuction(solver, intent, dutch);
         }
         catch (error) {
             console.error('Error handling Dutch auction:', error.message);
@@ -49,13 +55,7 @@ async function main() {
         process.exit(0);
     });
 }
-async function handleDutchAuction(solver, intent) {
-    // Get Dutch auction details
-    const dutch = await solver.getDutchAuction(intent.id);
-    if (!dutch) {
-        console.log(`No Dutch auction found for intent ${intent.id}`);
-        return;
-    }
+async function handleDutchAuction(solver, intent, dutch) {
     console.log(`\n=== Dutch Auction Details ===`);
     console.log(`Start Price: ${dutch.startPrice}`);
     console.log(`End Price: ${dutch.endPrice}`);
