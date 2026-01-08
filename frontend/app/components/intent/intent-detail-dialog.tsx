@@ -11,8 +11,10 @@ import { getExplorerUrl } from '@/app/lib/aptos';
 import { TOKENS } from '@/constants/contracts';
 import {
   ArrowRight, Clock, ExternalLink, Calendar, TrendingUp, Timer, Check,
-  ArrowUpRight, Zap, Target, Gavel, TrendingDown, User, DollarSign, Trophy, Users,
+  ArrowUpRight, Zap, Target, Gavel, TrendingDown, User, DollarSign,
 } from 'lucide-react';
+import { SealedBidAuctionSection } from './sealed-bid-auction-section';
+import { DutchAuctionChart } from './dutch-auction-chart';
 
 interface IntentDetailDialogProps {
   intent: IntentRecord | null;
@@ -158,10 +160,10 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon className="h-5 w-5 text-primary" />
+            <Icon className={`h-5 w-5 ${intent.auctionType === 'dutch' ? 'text-amber-400' : 'text-primary'}`} />
             {isAuction ? (
               <Badge className={intent.auctionType === 'sealed-bid' ? TYPE_COLORS.swap : 'bg-amber-500/10 text-amber-400'}>
-                {intent.auctionType === 'sealed-bid' ? 'Sealed-Bid Auction' : 'Dutch Auction'}
+                {intent.auctionType === 'sealed-bid' ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
               </Badge>
             ) : (
               <Badge className={TYPE_COLORS[intent.intentType]}>
@@ -309,46 +311,14 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
             </>
           )}
 
-          {/* Auction-specific */}
-          {isAuction && (
-            <>
-              <Separator />
-              <div className="space-y-2">
-                {intent.auctionType === 'sealed-bid' && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> Bids</span>
-                    <span className="font-medium">{intent.bidCount ?? 0}</span>
-                  </div>
-                )}
-                {intent.auctionType === 'dutch' && intent.auctionStartPrice && intent.auctionEndPrice && (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Start Price</span>
-                      <span>{formatPrice(intent.auctionStartPrice)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">End Price</span>
-                      <span>{formatPrice(intent.auctionEndPrice)}</span>
-                    </div>
-                  </div>
-                )}
-                {(intent.auctionWinner || intent.solver) && (
-                  <div className="flex justify-between items-center p-2 rounded bg-primary/10">
-                    <span className="text-muted-foreground flex items-center gap-1"><Trophy className="h-3 w-3" /> Winner</span>
-                    <a href={`https://explorer.movementnetwork.xyz/account/${intent.auctionWinner || intent.solver}?network=testnet`}
-                      target="_blank" rel="noopener noreferrer" className="font-mono text-primary text-xs hover:underline">
-                      {truncateAddress(intent.auctionWinner || intent.solver || '')}
-                    </a>
-                  </div>
-                )}
-                {intent.auctionAcceptedPrice && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Accepted Price</span>
-                    <span className="font-medium">{formatPrice(intent.auctionAcceptedPrice)}</span>
-                  </div>
-                )}
-              </div>
-            </>
+          {/* Auction-specific - Sealed Bid */}
+          {isAuction && intent.auctionType === 'sealed-bid' && (
+            <SealedBidAuctionSection intent={intent} />
+          )}
+
+          {/* Auction-specific - Dutch Auction */}
+          {isAuction && intent.auctionType === 'dutch' && (
+            <DutchAuctionChart intent={intent} />
           )}
 
           {/* Solver Info */}

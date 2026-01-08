@@ -75,7 +75,7 @@ export function AuctionIntentRow({ intent, onCancel, onClick, isCancelling }: Au
         <div>
           <div className="flex items-center gap-2">
             <span className={`text-xs uppercase ${isSealedBid ? 'text-primary' : 'text-amber-400'}`}>
-              {isSealedBid ? 'Sealed-Bid' : 'Dutch'}
+              {isSealedBid ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
             </span>
             {isActive && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">Live</span>

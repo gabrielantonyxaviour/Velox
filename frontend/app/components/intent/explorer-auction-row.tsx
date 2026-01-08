@@ -151,7 +151,7 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
             <TrendingDown className="h-4 w-4 text-amber-400" />
           )}
           <Badge className={`text-xs ${isSealedBid ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-400'}`}>
-            {isSealedBid ? 'Sealed-Bid' : 'Dutch'}
+            {isSealedBid ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
           </Badge>
           <span className="text-muted-foreground">#{intent.id.toString()}</span>
         </div>

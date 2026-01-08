@@ -25,6 +25,23 @@ export interface DutchAuction {
   acceptedPrice: bigint;
 }
 
+// Sealed-bid auction bid entry
+export interface AuctionBid {
+  bidder: string;
+  amount: bigint;       // Output amount the solver is offering
+  timestamp: number;
+  txHash?: string;
+  isWinner?: boolean;
+}
+
+// Dutch auction price point for chart
+export interface DutchPricePoint {
+  timestamp: number;
+  price: bigint;
+  isBid?: boolean;      // True if a bid was placed at this point
+  bidder?: string;
+}
+
 export type IntentStatus = 'pending' | 'partially_filled' | 'filled' | 'cancelled' | 'expired';
 
 export interface IntentRecord {
@@ -67,6 +84,8 @@ export interface IntentRecord {
   auctionWinner?: string;
   auctionAcceptedPrice?: bigint;
   bidCount?: number; // Sealed-bid auction
+  bids?: AuctionBid[]; // Bid leaderboard for sealed-bid auctions
+  dutchPriceHistory?: DutchPricePoint[]; // Price points for Dutch auction chart
   // Solver execution info
   solverReputation?: number;
   executionTime?: number; // seconds from submission to fill
