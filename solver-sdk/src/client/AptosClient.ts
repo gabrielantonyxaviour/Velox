@@ -1,53 +1,43 @@
 import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-labs/ts-sdk';
 
-// Shinami Node Service URL for Movement
-const SHINAMI_NODE_URL = 'https://api.shinami.com/movement/node/v1';
-
 export interface AptosClientConfig {
   rpcUrl: string;
   privateKey?: string;
-  /** Shinami Node Service API key for enhanced reliability */
+  /** Shinami API key - currently used for Gas Station only, Node Service pending */
   shinamiNodeKey?: string;
 }
 
 export class VeloxAptosClient {
   private aptos: Aptos;
   private account?: Account;
-  private usingShinami: boolean = false;
+  private shinamiKey?: string;
 
   constructor(config: AptosClientConfig) {
-    // Use Shinami Node Service if API key is provided for enhanced reliability
-    if (config.shinamiNodeKey) {
-      console.log('[VeloxAptosClient] Using Shinami Node Service for enhanced reliability');
-      this.aptos = new Aptos(
-        new AptosConfig({
-          network: Network.CUSTOM,
-          fullnode: SHINAMI_NODE_URL,
-          clientConfig: {
-            HEADERS: {
-              'X-API-Key': config.shinamiNodeKey,
-            },
-          },
-        })
-      );
-      this.usingShinami = true;
-    } else {
-      this.aptos = new Aptos(
-        new AptosConfig({
-          network: Network.CUSTOM,
-          fullnode: config.rpcUrl,
-        })
-      );
-    }
+    // Note: Shinami Node Service for Movement uses JSON-RPC format
+    // which isn't directly compatible with Aptos SDK's REST client.
+    // For now, we use the standard Movement RPC and store the key
+    // for potential future JSON-RPC integration.
+    this.shinamiKey = config.shinamiNodeKey;
+
+    this.aptos = new Aptos(
+      new AptosConfig({
+        network: Network.CUSTOM,
+        fullnode: config.rpcUrl,
+      })
+    );
 
     if (config.privateKey) {
       const privateKey = new Ed25519PrivateKey(config.privateKey);
       this.account = Account.fromPrivateKey({ privateKey });
     }
+
+    if (config.shinamiNodeKey) {
+      console.log('[VeloxAptosClient] Shinami key configured (Gas Station ready)');
+    }
   }
 
-  isUsingShinami(): boolean {
-    return this.usingShinami;
+  hasShinamiKey(): boolean {
+    return !!this.shinamiKey;
   }
 
   getAptos(): Aptos {

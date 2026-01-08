@@ -20,9 +20,7 @@ async function main() {
 
   console.log('Starting Velox Basic Solver...');
   if (shinamiNodeKey) {
-    console.log('Shinami Node Service: ENABLED');
-  } else {
-    console.log('Shinami Node Service: DISABLED (using standard RPC)');
+    console.log('Shinami: CONFIGURED');
   }
   console.log('Listening for pending intents...\n');
 
