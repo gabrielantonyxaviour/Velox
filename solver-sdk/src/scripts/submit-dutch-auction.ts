@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { Aptos, AptosConfig, Network, Ed25519PrivateKey, Account } from '@aptos-labs/ts-sdk';
 
 const VELOX_ADDRESS = process.env.VELOX_ADDRESS || '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
-const RPC_URL = process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1';
+const RPC_URL = process.env.RPC_URL || 'https://rpc.ankr.com/http/movement_bardock';
 const USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY;
 
 const TOKEN_ADDRESSES = {
