@@ -1,6 +1,7 @@
 /**
  * Shinami Gas Station Client for Velox
  * Provides gasless transaction sponsorship for user intent submissions
+ * Uses server-side API route to keep SHINAMI_KEY secret
  */
 
 import {
@@ -10,11 +11,9 @@ import {
   generateSigningMessageForTransaction,
   SimpleTransaction,
   AccountAuthenticator,
+  Deserializer,
 } from '@aptos-labs/ts-sdk';
 import { aptos, toHex } from '../aptos';
-
-// Shinami Gas Station API endpoint for Movement
-const SHINAMI_GAS_STATION_URL = 'https://api.shinami.com/movement/gas/v1/';
 
 export interface SignRawHashFunction {
   (params: { address: string; chainType: 'aptos'; hash: `0x${string}` }): Promise<{
@@ -31,70 +30,58 @@ export interface SponsorshipResult {
   error?: string;
 }
 
+// Cache for sponsorship availability check
+let sponsorshipEnabled: boolean | null = null;
+
 /**
- * Get Shinami API key from environment
+ * Check if Gas Station sponsorship is available (server-side configured)
  */
-function getShinamiKey(): string {
-  const key = process.env.SHINAMI_KEY;
-  if (!key) {
-    throw new Error('SHINAMI_KEY not configured');
+export async function isSponsorshipEnabled(): Promise<boolean> {
+  if (sponsorshipEnabled !== null) {
+    return sponsorshipEnabled;
   }
-  return key;
+
+  try {
+    const response = await fetch('/api/sponsor');
+    const data = await response.json();
+    sponsorshipEnabled = data.enabled === true;
+    return sponsorshipEnabled;
+  } catch {
+    sponsorshipEnabled = false;
+    return false;
+  }
 }
 
 /**
- * Check if Gas Station sponsorship is available
- */
-export function isSponsorshipEnabled(): boolean {
-  return !!process.env.SHINAMI_KEY;
-}
-
-/**
- * Request transaction sponsorship from Shinami Gas Station
+ * Request transaction sponsorship via server-side API route
  */
 export async function sponsorTransaction(
   rawTransaction: SimpleTransaction
 ): Promise<SponsorshipResult> {
   try {
-    const apiKey = getShinamiKey();
-
     // Serialize the raw transaction to hex
     const rawTxHex = Buffer.from(rawTransaction.bcsToBytes()).toString('hex');
 
-    const response = await fetch(SHINAMI_GAS_STATION_URL, {
+    const response = await fetch('/api/sponsor', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
       },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'gas_sponsorTransaction',
-        params: [`0x${rawTxHex}`],
-        id: 1,
-      }),
+      body: JSON.stringify({ rawTxHex }),
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `Shinami API error: ${response.status} - ${errorText}`,
-      };
-    }
 
     const result = await response.json();
 
-    if (result.error) {
+    if (!result.success) {
       return {
         success: false,
-        error: result.error.message || 'Sponsorship failed',
+        error: result.error || 'Sponsorship failed',
       };
     }
 
     return {
       success: true,
-      feePayer: result.result.feePayer,
+      feePayer: result.feePayer,
     };
   } catch (error) {
     return {
@@ -115,7 +102,7 @@ export async function sponsoredSubmit(
   publicKeyHex: string,
   signRawHash: SignRawHashFunction
 ): Promise<string> {
-  // 1. Build the transaction
+  // 1. Build the transaction with fee payer enabled
   const rawTxn = await aptos.transaction.build.simple({
     sender: walletAddress,
     data: {
@@ -123,20 +110,17 @@ export async function sponsoredSubmit(
       typeArguments: [],
       functionArguments: args,
     },
-    withFeePayer: true, // Enable fee payer for sponsorship
+    withFeePayer: true,
   });
 
-  // 2. Request sponsorship from Shinami
+  // 2. Request sponsorship from server-side API
   const sponsorship = await sponsorTransaction(rawTxn);
 
   if (!sponsorship.success || !sponsorship.feePayer) {
     throw new Error(sponsorship.error || 'Failed to get transaction sponsorship');
   }
 
-  // 3. Update transaction with fee payer address
-  // The fee payer address is returned by Shinami after sponsorship
-
-  // 4. Generate signing message and get user signature
+  // 3. Generate signing message and get user signature
   const message = generateSigningMessageForTransaction(rawTxn);
   const { signature: rawSignature } = await signRawHash({
     address: walletAddress,
@@ -144,7 +128,7 @@ export async function sponsoredSubmit(
     hash: `0x${toHex(message)}`,
   });
 
-  // 5. Create sender authenticator
+  // 4. Create sender authenticator
   let cleanPublicKey = publicKeyHex.startsWith('0x') ? publicKeyHex.slice(2) : publicKeyHex;
   if (cleanPublicKey.length === 66) {
     cleanPublicKey = cleanPublicKey.slice(2);
@@ -155,20 +139,20 @@ export async function sponsoredSubmit(
     new Ed25519Signature(rawSignature.startsWith('0x') ? rawSignature.slice(2) : rawSignature)
   );
 
-  // 6. Create fee payer authenticator from Shinami's signature
+  // 5. Create fee payer authenticator from Shinami's signature
   const feePayerSignatureBytes = new Uint8Array(sponsorship.feePayer.signature);
   const feePayerAuthenticator = AccountAuthenticator.deserialize(
-    new (await import('@aptos-labs/ts-sdk')).Deserializer(feePayerSignatureBytes)
+    new Deserializer(feePayerSignatureBytes)
   );
 
-  // 7. Submit the sponsored transaction
+  // 6. Submit the sponsored transaction
   const committedTx = await aptos.transaction.submit.simple({
     transaction: rawTxn,
     senderAuthenticator,
     feePayerAuthenticator,
   });
 
-  // 8. Wait for confirmation
+  // 7. Wait for confirmation
   const executed = await aptos.waitForTransaction({ transactionHash: committedTx.hash });
   if (!executed.success) {
     throw new Error('Sponsored transaction failed on-chain');
@@ -179,7 +163,6 @@ export async function sponsoredSubmit(
 
 /**
  * Sponsored submit for native wallet adapters (Nightly, etc.)
- * Uses a different signing flow
  */
 export async function sponsoredSubmitNative(
   walletAddress: string,
@@ -198,7 +181,7 @@ export async function sponsoredSubmitNative(
     withFeePayer: true,
   });
 
-  // 2. Request sponsorship from Shinami
+  // 2. Request sponsorship from server-side API
   const sponsorship = await sponsorTransaction(rawTxn);
 
   if (!sponsorship.success || !sponsorship.feePayer) {
@@ -211,7 +194,7 @@ export async function sponsoredSubmitNative(
   // 4. Create fee payer authenticator from Shinami's signature
   const feePayerSignatureBytes = new Uint8Array(sponsorship.feePayer.signature);
   const feePayerAuthenticator = AccountAuthenticator.deserialize(
-    new (await import('@aptos-labs/ts-sdk')).Deserializer(feePayerSignatureBytes)
+    new Deserializer(feePayerSignatureBytes)
   );
 
   // 5. Submit the sponsored transaction

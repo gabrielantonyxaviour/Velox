@@ -73,7 +73,8 @@ async function smartSubmitWithPrivy(
   signRawHash: SignRawHashFunction
 ): Promise<string> {
   // Try sponsored submission first if enabled
-  if (isSponsorshipEnabled()) {
+  const sponsorshipAvailable = await isSponsorshipEnabled();
+  if (sponsorshipAvailable) {
     try {
       console.log('[Velox] Using Shinami Gas Station for sponsored transaction');
       return await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
