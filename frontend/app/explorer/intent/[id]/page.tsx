@@ -242,7 +242,7 @@ export default function IntentDetailPage() {
                           <CardTitle className="text-lg">Intent #{intent.id.toString()}</CardTitle>
                         </div>
                         <div className="flex gap-2">
-                          <Badge className={intent.auctionType === 'dutch' ? 'bg-amber-500/10 text-amber-400' : 'bg-primary/10 text-primary'}>
+                          <Badge className="bg-primary/10 text-primary">
                             {intent.auctionType === 'sealed-bid' ? 'Sealed Bid Swap' :
                              intent.auctionType === 'dutch' ? 'Dutch Auction Swap' :
                              getIntentTypeDisplay(intent.intentType)}

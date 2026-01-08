@@ -148,9 +148,9 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
           {isSealedBid ? (
             <Gavel className="h-4 w-4 text-primary" />
           ) : (
-            <TrendingDown className="h-4 w-4 text-amber-400" />
+            <TrendingDown className="h-4 w-4 text-primary" />
           )}
-          <Badge className={`text-xs ${isSealedBid ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-400'}`}>
+          <Badge className="text-xs bg-primary/10 text-primary">
             {isSealedBid ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
           </Badge>
           <span className="text-muted-foreground">#{intent.id.toString()}</span>
@@ -194,14 +194,14 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
 
           {/* Dutch: show current price */}
           {isDutch && isActive && currentDutchPrice && (
-            <div className="flex items-center gap-1 text-amber-400">
+            <div className="flex items-center gap-1 text-primary">
               <span className="font-medium">{formatPrice(currentDutchPrice)}</span>
             </div>
           )}
 
           {/* Countdown for active auctions */}
           {isActive && countdown && (
-            <div className={`flex items-center gap-1 ${countdown === 'Ended' ? 'text-muted-foreground' : isSealedBid ? 'text-primary' : 'text-amber-400'}`}>
+            <div className={`flex items-center gap-1 ${countdown === 'Ended' ? 'text-muted-foreground' : 'text-primary'}`}>
               <Timer className="h-3 w-3" />
               <span className="font-medium">{countdown}</span>
             </div>
@@ -223,7 +223,7 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
       {isDutch && isActive && intent.auctionStartPrice && intent.auctionEndPrice && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{formatPrice(intent.auctionStartPrice)}</span>
-          <Progress value={priceProgress} className="h-1.5 flex-1 bg-amber-900/30" />
+          <Progress value={priceProgress} className="h-1.5 flex-1 bg-primary/30" />
           <span className="text-xs text-muted-foreground">{formatPrice(intent.auctionEndPrice)}</span>
         </div>
       )}

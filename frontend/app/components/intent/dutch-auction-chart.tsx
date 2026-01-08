@@ -287,12 +287,12 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-amber-400" />
+            <TrendingDown className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">Dutch Auction Price</span>
           </div>
           <div className="flex items-center gap-2">
             <Timer className="h-3 w-3 text-muted-foreground" />
-            <span className={`text-sm font-bold ${isActive ? 'text-amber-400' : 'text-muted-foreground'}`}>
+            <span className={`text-sm font-bold ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
               {formatTimeRemaining(timeRemaining)}
             </span>
           </div>
@@ -304,9 +304,9 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
             <p className="text-xs text-muted-foreground">Start Price</p>
             <p className="font-bold text-sm">{formatPrice(startPrice)}</p>
           </div>
-          <div className={`p-2 rounded text-center ${isActive ? 'bg-amber-500/20' : 'bg-muted/30'}`}>
+          <div className={`p-2 rounded text-center ${isActive ? 'bg-primary/20' : 'bg-muted/30'}`}>
             <p className="text-xs text-muted-foreground">Current</p>
-            <p className={`font-bold text-sm ${isActive ? 'text-amber-400' : ''}`}>
+            <p className={`font-bold text-sm ${isActive ? 'text-primary' : ''}`}>
               {formatPrice(currentPrice)}
             </p>
           </div>
@@ -338,16 +338,16 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
 
         {/* Winner Info */}
         {intent.auctionWinner && (
-          <div className="flex items-center justify-between p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/30">
             <div className="flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-amber-400" />
+              <Trophy className="h-4 w-4 text-primary" />
               <span className="text-sm">Winning Solver</span>
             </div>
             <a
               href={`https://explorer.movementnetwork.xyz/account/${intent.auctionWinner}?network=testnet`}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-xs text-amber-400 hover:underline"
+              className="font-mono text-xs text-primary hover:underline"
             >
               {truncateAddress(intent.auctionWinner)}
             </a>

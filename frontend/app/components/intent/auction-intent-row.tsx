@@ -70,11 +70,11 @@ export function AuctionIntentRow({ intent, onCancel, onClick, isCancelling }: Au
         {isSealedBid ? (
           <Gavel className="h-4 w-4 text-primary" />
         ) : (
-          <TrendingDown className="h-4 w-4 text-amber-400" />
+          <TrendingDown className="h-4 w-4 text-primary" />
         )}
         <div>
           <div className="flex items-center gap-2">
-            <span className={`text-xs uppercase ${isSealedBid ? 'text-primary' : 'text-amber-400'}`}>
+            <span className="text-xs uppercase text-primary">
               {isSealedBid ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
             </span>
             {isActive && (

@@ -160,9 +160,9 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
       <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon className={`h-5 w-5 ${intent.auctionType === 'dutch' ? 'text-amber-400' : 'text-primary'}`} />
+            <Icon className="h-5 w-5 text-primary" />
             {isAuction ? (
-              <Badge className={intent.auctionType === 'sealed-bid' ? TYPE_COLORS.swap : 'bg-amber-500/10 text-amber-400'}>
+              <Badge className={TYPE_COLORS.swap}>
                 {intent.auctionType === 'sealed-bid' ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
               </Badge>
             ) : (
