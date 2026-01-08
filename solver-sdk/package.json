@@ -10,9 +10,9 @@
   ],
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node-dev --respawn src/examples/basic-solver.ts",
-    "dev:advanced": "ts-node-dev --respawn src/examples/advanced-solver.ts",
-    "dev:dutch": "ts-node-dev --respawn src/examples/dutch-solver.ts",
+    "dev": "ts-node-dev -r dotenv/config --respawn src/examples/basic-solver.ts",
+    "dev:advanced": "ts-node-dev -r dotenv/config --respawn src/examples/advanced-solver.ts",
+    "dev:dutch": "ts-node-dev -r dotenv/config --respawn src/examples/dutch-solver.ts",
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist",

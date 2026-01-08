@@ -490,23 +490,38 @@ export class VeloxSolver extends EventEmitter {
 
   async getDutchAuction(intentId: string): Promise<DutchAuction | null> {
     try {
-      const result = await this.client.view<[string, string, string, string, boolean, string, string]>({
+      type DutchAuctionResponse = {
+        intent_id: string;
+        start_time: string;
+        start_price: string;
+        end_price: string;
+        duration: string;
+        is_active: boolean;
+        winner: { vec: string[] };
+        accepted_price: string;
+      };
+
+      const result = await this.client.view<[DutchAuctionResponse]>({
         function: `${this.veloxAddress}::auction::get_dutch_auction`,
         typeArguments: [],
         functionArguments: [this.veloxAddress, intentId],
       });
 
-      const [startTime, startPrice, endPrice, duration, isActive, winner, acceptedPrice] = result;
+      // View returns a single object with named properties
+      const data = result[0];
+
+      const winnerVec = data.winner.vec;
+      const winnerAddress: string | null = winnerVec.length > 0 && winnerVec[0] ? winnerVec[0] : null;
 
       return {
-        intentId: BigInt(intentId),
-        startTime: BigInt(startTime),
-        startPrice: BigInt(startPrice),
-        endPrice: BigInt(endPrice),
-        duration: BigInt(duration),
-        isActive: isActive,
-        winner: winner === '0x0' ? null : winner,
-        acceptedPrice: BigInt(acceptedPrice),
+        intentId: BigInt(data.intent_id),
+        startTime: BigInt(data.start_time),
+        startPrice: BigInt(data.start_price),
+        endPrice: BigInt(data.end_price),
+        duration: BigInt(data.duration),
+        isActive: data.is_active,
+        winner: winnerAddress,
+        acceptedPrice: BigInt(data.accepted_price),
       };
     } catch (error) {
       console.error(`Error getting Dutch auction:`, error);
@@ -721,6 +736,32 @@ export class VeloxSolver extends EventEmitter {
       4: IntentStatus.EXPIRED,
     };
 
+    // Map for Move 2.0 enum __variant__ pattern
+    const statusVariantMap: Record<string, IntentStatus> = {
+      'Pending': IntentStatus.PENDING,
+      'PartiallyFilled': IntentStatus.PARTIALLY_FILLED,
+      'Filled': IntentStatus.FILLED,
+      'Cancelled': IntentStatus.CANCELLED,
+      'Expired': IntentStatus.EXPIRED,
+    };
+
+    // Helper to parse status from either number or __variant__ object
+    const parseStatus = (status: unknown): IntentStatus => {
+      if (typeof status === 'number') {
+        return statusMap[status] ?? IntentStatus.PENDING;
+      }
+      if (status && typeof status === 'object' && '__variant__' in status) {
+        const variant = (status as Record<string, unknown>).__variant__;
+        if (typeof variant === 'string') {
+          const mapped = statusVariantMap[variant];
+          if (mapped !== undefined) {
+            return mapped;
+          }
+        }
+      }
+      return IntentStatus.PENDING;
+    };
+
     // Safe string extraction helper
     const safeGetString = (obj: Record<string, unknown> | undefined, key: string): string => {
       if (!obj) return '0';
@@ -835,7 +876,7 @@ export class VeloxSolver extends EventEmitter {
       inputAmount: BigInt(amountIn),
       minOutputAmount: minAmountOut !== '0' ? BigInt(minAmountOut) : undefined,
       deadline: new Date(parseInt(deadline) * 1000),
-      status: statusMap[Number(record.status ?? 0)] || IntentStatus.PENDING,
+      status: parseStatus(record.status),
       createdAt: new Date(parseInt(safeGetString(record, 'created_at')) * 1000),
       limitPrice: intent?.limit_price ? BigInt(safeGetString(intent, 'limit_price')) : undefined,
       partialFillAllowed: Boolean(intent?.partial_fill_allowed ?? intent?.partial_fill),

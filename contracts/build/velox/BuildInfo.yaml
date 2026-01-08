@@ -12,10 +12,10 @@ compiled_package_info:
     velox: 951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7
     vm: "0000000000000000000000000000000000000000000000000000000000000000"
     vm_reserved: "0000000000000000000000000000000000000000000000000000000000000000"
-  source_digest: 3219C1FF65A742A867C1A44366EFE23523B7B3B251CD07B5451843B36DF4CD9A
+  source_digest: FB78F79C27D5B3BBC024B790B512E3A65F46B33B8E290CA8D2A1FC5C9253F1C5
   build_flags:
-    dev_mode: false
-    test_mode: false
+    dev_mode: true
+    test_mode: true
     override_std: ~
     generate_docs: false
     generate_abis: false
@@ -25,7 +25,7 @@ compiled_package_info:
     force_recompilation: false
     additional_named_addresses: {}
     fetch_deps_only: false
-    skip_fetch_latest_git_deps: true
+    skip_fetch_latest_git_deps: false
     compiler_config:
       bytecode_version: 7
       known_attributes:

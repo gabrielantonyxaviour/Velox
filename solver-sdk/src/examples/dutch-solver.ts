@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { VeloxSolver } from '../VeloxSolver';
-import { Intent, IntentType, AuctionType } from '../types/intent';
+import { Intent, IntentType } from '../types/intent';
 
 async function main() {
   const solver = new VeloxSolver({
@@ -21,11 +21,18 @@ async function main() {
     console.error('Solver error:', error.message);
   });
 
-  // Listen for new intents with Dutch auction type
+  // Listen for new intents - check all SWAP intents for Dutch auctions
   solver.startIntentStream(async (intent: Intent) => {
-    // Only handle intents with Dutch auction type
-    if (intent.auctionType !== AuctionType.DUTCH) {
-      console.log(`Skipping intent ${intent.id} - not a Dutch auction`);
+    // Only handle SWAP intents that might have Dutch auctions
+    if (intent.type !== IntentType.SWAP) {
+      console.log(`Skipping intent ${intent.id} - not a SWAP type`);
+      return;
+    }
+
+    // Check if this intent has a Dutch auction associated with it
+    const dutch = await solver.getDutchAuction(intent.id);
+    if (!dutch || !dutch.isActive) {
+      console.log(`Skipping intent ${intent.id} - no active Dutch auction`);
       return;
     }
 
@@ -37,7 +44,7 @@ async function main() {
     console.log(`Output Token: ${intent.outputToken.address}`);
 
     try {
-      await handleDutchAuction(solver, intent);
+      await handleDutchAuction(solver, intent, dutch);
     } catch (error) {
       console.error('Error handling Dutch auction:', (error as Error).message);
     }
@@ -56,14 +63,7 @@ async function main() {
   });
 }
 
-async function handleDutchAuction(solver: VeloxSolver, intent: Intent): Promise<void> {
-  // Get Dutch auction details
-  const dutch = await solver.getDutchAuction(intent.id);
-  if (!dutch) {
-    console.log(`No Dutch auction found for intent ${intent.id}`);
-    return;
-  }
-
+async function handleDutchAuction(solver: VeloxSolver, intent: Intent, dutch: NonNullable<Awaited<ReturnType<typeof solver.getDutchAuction>>>): Promise<void> {
   console.log(`\n=== Dutch Auction Details ===`);
   console.log(`Start Price: ${dutch.startPrice}`);
   console.log(`End Price: ${dutch.endPrice}`);
