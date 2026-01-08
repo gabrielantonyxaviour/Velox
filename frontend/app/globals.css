@@ -61,6 +61,26 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Privy modal customization - Velox dark theme */
+  --privy-color-background: #0c0a09;
+  --privy-color-background-2: #1c1917;
+  --privy-color-background-3: #292524;
+  --privy-color-foreground: #faf7f5;
+  --privy-color-foreground-2: #a8a29e;
+  --privy-color-foreground-3: #78716c;
+  --privy-color-foreground-4: #57534e;
+  --privy-color-accent: #c2956a;
+  --privy-color-accent-light: #d4ad85;
+  --privy-color-accent-lightest: #e6c9a8;
+  --privy-color-accent-dark: #a67d55;
+  --privy-color-accent-darkest: #8a6644;
+  --privy-color-success: #65a30d;
+  --privy-color-error: #dc2626;
+  --privy-color-error-light: #fca5a5;
+  --privy-border-radius-sm: 4px;
+  --privy-border-radius-md: 6px;
+  --privy-border-radius-lg: 8px;
 }
 
 * {

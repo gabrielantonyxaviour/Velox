@@ -54,7 +54,7 @@ export default function PrivyLoginSection({ onClose }: PrivyLoginSectionProps) {
 
       if (!authenticated) {
         await login({
-          loginMethods: ['email', 'twitter', 'google', 'github', 'discord'],
+          loginMethods: ['email'],
           prefill: { type: 'email', value: '' },
           disableSignup: false
         });
