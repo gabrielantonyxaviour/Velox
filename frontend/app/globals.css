@@ -61,8 +61,32 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
 
-  /* Privy modal customization - Velox dark theme */
+/* App container with max-width and side vignette effect */
+.app-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  position: relative;
+  min-height: 100vh;
+  background: var(--background);
+}
+
+/* Side vignette effect for wide screens */
+@media (min-width: 1440px) {
+  body {
+    background: #000000;
+  }
+
+  .app-container {
+    box-shadow:
+      0 0 80px 40px rgba(0, 0, 0, 0.6),
+      inset 0 0 0 1px rgba(68, 64, 60, 0.1);
+  }
+}
+
+/* Privy modal customization - Velox dark theme */
+body {
   --privy-color-background: #0c0a09;
   --privy-color-background-2: #1c1917;
   --privy-color-background-3: #292524;

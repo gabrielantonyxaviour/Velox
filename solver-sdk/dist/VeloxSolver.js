@@ -488,7 +488,54 @@ class VeloxSolver extends events_1.EventEmitter {
     }
     // ============ Dutch Auction Utilities ============
     /**
-     * Calculate time until Dutch price reaches target price
+     * Integer square root using Newton's method
+     */
+    bigIntSqrt(n) {
+        if (n < 0n)
+            throw new Error('Square root of negative number');
+        if (n === 0n)
+            return 0n;
+        if (n === 1n)
+            return 1n;
+        let x = n;
+        let y = (x + 1n) / 2n;
+        while (y < x) {
+            x = y;
+            y = (x + n / x) / 2n;
+        }
+        return x;
+    }
+    /**
+     * Calculate Dutch auction price at a given elapsed time using quadratic decay
+     * Formula: price = startPrice - priceRange * (elapsed/duration)^2
+     * This creates a curve that starts slow and accelerates downward
+     */
+    calculateDutchPrice(dutch, elapsedSeconds) {
+        if (elapsedSeconds >= dutch.duration) {
+            return dutch.endPrice;
+        }
+        if (elapsedSeconds <= 0n) {
+            return dutch.startPrice;
+        }
+        const priceRange = dutch.startPrice - dutch.endPrice;
+        const elapsedSquared = elapsedSeconds * elapsedSeconds;
+        const durationSquared = dutch.duration * dutch.duration;
+        const decay = (priceRange * elapsedSquared) / durationSquared;
+        return dutch.startPrice - decay;
+    }
+    /**
+     * Get current Dutch auction price calculated locally (not from contract)
+     * Useful for strategy planning without RPC calls
+     */
+    getCurrentDutchPriceLocal(dutch) {
+        const now = BigInt(Math.floor(Date.now() / 1000));
+        const elapsed = now - dutch.startTime;
+        return this.calculateDutchPrice(dutch, elapsed);
+    }
+    /**
+     * Calculate time until Dutch price reaches target price (quadratic curve)
+     * Inverse of: price = startPrice - priceRange * (t/duration)^2
+     * Solving for t: t = duration * sqrt((startPrice - price) / priceRange)
      */
     calculateTimeToPrice(dutch, targetPrice) {
         if (targetPrice >= dutch.startPrice)
@@ -497,7 +544,14 @@ class VeloxSolver extends events_1.EventEmitter {
             return dutch.duration;
         const priceRange = dutch.startPrice - dutch.endPrice;
         const priceDropNeeded = dutch.startPrice - targetPrice;
-        return (priceDropNeeded * dutch.duration) / priceRange;
+        // t = duration * sqrt(priceDropNeeded / priceRange)
+        // Using integer approximation: t = duration * sqrt(priceDropNeeded) / sqrt(priceRange)
+        // Scale by 1_000_000 for precision before taking square root
+        const sqrtDrop = this.bigIntSqrt(priceDropNeeded * 1000000n);
+        const sqrtRange = this.bigIntSqrt(priceRange * 1000000n);
+        if (sqrtRange === 0n)
+            return dutch.duration;
+        return (dutch.duration * sqrtDrop) / sqrtRange;
     }
     /**
      * Monitor Dutch auction and accept when price reaches threshold

@@ -89,7 +89,24 @@ export declare class VeloxSolver extends EventEmitter {
     acceptDutchAuction(intentId: string): Promise<SolutionResult>;
     settleDutchAuction(intentId: string): Promise<SolutionResult>;
     /**
-     * Calculate time until Dutch price reaches target price
+     * Integer square root using Newton's method
+     */
+    private bigIntSqrt;
+    /**
+     * Calculate Dutch auction price at a given elapsed time using quadratic decay
+     * Formula: price = startPrice - priceRange * (elapsed/duration)^2
+     * This creates a curve that starts slow and accelerates downward
+     */
+    calculateDutchPrice(dutch: DutchAuction, elapsedSeconds: bigint): bigint;
+    /**
+     * Get current Dutch auction price calculated locally (not from contract)
+     * Useful for strategy planning without RPC calls
+     */
+    getCurrentDutchPriceLocal(dutch: DutchAuction): bigint;
+    /**
+     * Calculate time until Dutch price reaches target price (quadratic curve)
+     * Inverse of: price = startPrice - priceRange * (t/duration)^2
+     * Solving for t: t = duration * sqrt((startPrice - price) / priceRange)
      */
     calculateTimeToPrice(dutch: DutchAuction, targetPrice: bigint): bigint;
     /**
