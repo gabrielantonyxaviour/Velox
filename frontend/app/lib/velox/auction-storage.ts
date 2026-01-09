@@ -160,14 +160,15 @@ export async function checkDutchAuction(intentId: bigint): Promise<StoredAuction
       },
     });
 
-    if (result && result.length > 0) {
-      const [startTime, startPrice, endPrice, duration, isActive] = result;
+    if (result && result[0]) {
+      // The view function returns a DutchAuction struct as an object
+      const data = result[0] as Record<string, unknown>;
       return {
         type: 'dutch',
-        startTime: Number(startTime),
-        duration: Number(duration),
-        startPrice: startPrice?.toString(),
-        endPrice: endPrice?.toString(),
+        startTime: Number(data.start_time || 0),
+        duration: Number(data.duration || 0),
+        startPrice: String(data.start_price || '0'),
+        endPrice: String(data.end_price || '0'),
       };
     }
   } catch {
