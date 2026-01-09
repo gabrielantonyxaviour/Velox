@@ -1,4 +1,5 @@
 export { VeloxSolver, VeloxSolverConfig } from './VeloxSolver';
+export { SolverConfig, SolverConfigOptions } from './config';
 export * from './types';
 export type { DutchAuction, AuctionType, } from './types/intent';
 export type { DutchAuctionCreatedEvent, DutchAuctionAcceptedEvent, } from './types/events';

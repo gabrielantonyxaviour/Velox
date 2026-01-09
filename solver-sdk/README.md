@@ -16,7 +16,7 @@ This SDK allows anyone to run a solver instance by:
 ### Installation
 
 ```bash
-npm install @velox/solver-sdk
+npm install @velox-movement/solver
 ```
 
 ### 1. Register as a Solver
@@ -177,7 +177,7 @@ npx velox-solver init -o .env.production
 You can also use the SDK programmatically in your own applications:
 
 ```typescript
-import { VeloxSolver, SolverConfig, Intent, IntentType } from '@velox/solver-sdk';
+import { VeloxSolver, SolverConfig, Intent, IntentType } from '@velox-movement/solver';
 
 // Create config from environment or manually
 const config = SolverConfig.fromEnv();
@@ -298,7 +298,7 @@ await solver.settleDutchAuction(intentId);
 Extend `BaseStrategy` to create custom solving strategies:
 
 ```typescript
-import { BaseStrategy, Intent, Solution, VeloxSolver, IntentType } from '@velox/solver-sdk';
+import { BaseStrategy, Intent, Solution, VeloxSolver, IntentType } from '@velox-movement/solver';
 
 class MyStrategy extends BaseStrategy {
   name = 'MyCustomStrategy';
