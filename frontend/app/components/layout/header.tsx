@@ -21,40 +21,41 @@ export function Header({ address }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-        {/* Logo and Nav */}
-        <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image
-              src="/velox-logo.png"
-              alt="Velox"
-              width={32}
-              height={32}
-              className="rounded-lg"
-            />
-            <span className="text-xl font-bold">Velox</span>
-          </Link>
+      <div className="container flex h-16 items-center px-4 md:px-6">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2">
+          <Image
+            src="/velox-logo.png"
+            alt="Velox"
+            width={32}
+            height={32}
+            className="rounded-lg"
+          />
+          <span className="text-xl font-bold">Velox</span>
+        </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  'px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                  pathname === link.href
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                )}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
+        {/* Centered Nav */}
+        <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+          {navLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                'px-3 py-2 text-sm font-medium transition-colors',
+                pathname === link.href
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </nav>
 
         {/* Wallet */}
-        <WalletButton address={address} />
+        <div className="ml-auto">
+          <WalletButton address={address} />
+        </div>
       </div>
     </header>
   );
