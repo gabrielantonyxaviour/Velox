@@ -30,15 +30,12 @@ export interface VeloxSolverConfig {
   skipExistingOnStartup?: boolean;
   /** Shinami Node Service API key for enhanced RPC reliability */
   shinamiNodeKey?: string;
-  /** Fee collector address for protocol fees (defaults to veloxAddress) */
-  feeCollectorAddress?: string;
 }
 
 export class VeloxSolver extends EventEmitter {
   private client: VeloxAptosClient;
   private graphql?: VeloxGraphQLClient;
   private veloxAddress: string;
-  private feeCollectorAddress: string;
   private isRunning: boolean = false;
   private pollingInterval: number;
   private skipExistingOnStartup: boolean;
@@ -51,7 +48,6 @@ export class VeloxSolver extends EventEmitter {
       shinamiNodeKey: config.shinamiNodeKey,
     });
     this.veloxAddress = config.veloxAddress;
-    this.feeCollectorAddress = config.feeCollectorAddress || config.veloxAddress;
     this.pollingInterval = config.pollingInterval || 1000;
     this.skipExistingOnStartup = config.skipExistingOnStartup ?? false;
 
@@ -187,7 +183,6 @@ export class VeloxSolver extends EventEmitter {
 
     console.log(`Calling solve_swap:`);
     console.log(`  Registry: ${this.veloxAddress}`);
-    console.log(`  Fee Collector: ${this.feeCollectorAddress}`);
     console.log(`  Intent ID: ${intentId}`);
     console.log(`  Output Amount: ${outputAmount}`);
 
@@ -195,7 +190,7 @@ export class VeloxSolver extends EventEmitter {
       const txHash = await this.client.submitTransaction({
         function: `${this.veloxAddress}::settlement::solve_swap`,
         typeArguments: [],
-        functionArguments: [this.veloxAddress, this.feeCollectorAddress, intentId, outputAmount.toString()],
+        functionArguments: [this.veloxAddress, intentId, outputAmount.toString()],
       });
 
       console.log(`solve_swap transaction successful: ${txHash}`);
@@ -224,7 +219,6 @@ export class VeloxSolver extends EventEmitter {
 
     console.log(`Calling solve_limit_order:`);
     console.log(`  Registry: ${this.veloxAddress}`);
-    console.log(`  Fee Collector: ${this.feeCollectorAddress}`);
     console.log(`  Intent ID: ${intentId}`);
     console.log(`  Fill Amount: ${fillAmount}`);
     console.log(`  Output Amount: ${outputAmount}`);
@@ -235,7 +229,6 @@ export class VeloxSolver extends EventEmitter {
         typeArguments: [],
         functionArguments: [
           this.veloxAddress,
-          this.feeCollectorAddress,
           intentId,
           fillAmount.toString(),
           outputAmount.toString(),
@@ -269,7 +262,6 @@ export class VeloxSolver extends EventEmitter {
 
     console.log(`Calling solve_dca_period:`);
     console.log(`  Registry: ${this.veloxAddress}`);
-    console.log(`  Fee Collector: ${this.feeCollectorAddress}`);
     console.log(`  Scheduled Registry: ${registryAddr}`);
     console.log(`  Intent ID: ${intentId}`);
     console.log(`  Output Amount: ${outputAmount}`);
@@ -280,7 +272,6 @@ export class VeloxSolver extends EventEmitter {
         typeArguments: [],
         functionArguments: [
           this.veloxAddress,
-          this.feeCollectorAddress,
           registryAddr,
           intentId,
           outputAmount.toString(),
@@ -314,7 +305,6 @@ export class VeloxSolver extends EventEmitter {
 
     console.log(`Calling solve_twap_chunk:`);
     console.log(`  Registry: ${this.veloxAddress}`);
-    console.log(`  Fee Collector: ${this.feeCollectorAddress}`);
     console.log(`  Scheduled Registry: ${registryAddr}`);
     console.log(`  Intent ID: ${intentId}`);
     console.log(`  Output Amount: ${outputAmount}`);
@@ -325,7 +315,6 @@ export class VeloxSolver extends EventEmitter {
         typeArguments: [],
         functionArguments: [
           this.veloxAddress,
-          this.feeCollectorAddress,
           registryAddr,
           intentId,
           outputAmount.toString(),
@@ -612,14 +601,13 @@ export class VeloxSolver extends EventEmitter {
 
     console.log(`Calling settle_dutch_auction:`);
     console.log(`  Registry: ${this.veloxAddress}`);
-    console.log(`  Fee Collector: ${this.feeCollectorAddress}`);
     console.log(`  Intent ID: ${intentId}`);
 
     try {
       const txHash = await this.client.submitTransaction({
         function: `${this.veloxAddress}::settlement::settle_dutch_auction`,
         typeArguments: [],
-        functionArguments: [this.veloxAddress, this.feeCollectorAddress, this.veloxAddress, intentId],
+        functionArguments: [this.veloxAddress, this.veloxAddress, intentId],
       });
 
       console.log(`settle_dutch_auction transaction successful: ${txHash}`);
@@ -879,7 +867,6 @@ export class VeloxSolver extends EventEmitter {
 
     console.log(`Calling settle_from_auction:`);
     console.log(`  Registry: ${this.veloxAddress}`);
-    console.log(`  Fee Collector: ${this.feeCollectorAddress}`);
     console.log(`  Auction State: ${this.veloxAddress}`);
     console.log(`  Intent ID: ${intentId}`);
 
@@ -889,7 +876,6 @@ export class VeloxSolver extends EventEmitter {
         typeArguments: [],
         functionArguments: [
           this.veloxAddress, // registry_addr
-          this.feeCollectorAddress, // fee_collector_addr
           this.veloxAddress, // auction_state_addr
           intentId,
         ],

@@ -176,11 +176,10 @@ module velox::settlement {
     // ============ Entry Functions ============
 
     /// Solve a swap intent by providing the output amount
-    /// Protocol fee is collected from input tokens (maker amount)
+    /// Protocol fee is collected from input tokens (maker amount) if FeeCollector is initialized
     public entry fun solve_swap(
         solver: &signer,
         registry_addr: address,
-        fee_collector_addr: address,
         intent_id: u64,
         output_amount: u64
     ) acquires FeeCollector {
@@ -213,23 +212,16 @@ module velox::settlement {
         let input_token = types::get_input_token(intent);
         let output_token = types::get_output_token(intent);
 
-        // Calculate protocol fee from input amount
-        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
-        let solver_receives = input_amount - protocol_fee;
+        // Calculate protocol fee and solver receives based on fee collector status
+        let (protocol_fee, solver_receives) = calculate_fees_and_transfers(registry_addr, input_amount);
 
         // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
         primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Collect protocol fee - transfer to treasury
-        if (protocol_fee > 0) {
-            collect_protocol_fee(
-                registry_addr,
-                fee_collector_addr,
-                input_token,
-                protocol_fee,
-                intent_id
-            );
+        // Collect protocol fee if applicable
+        if (protocol_fee > 0 && exists<FeeCollector>(registry_addr)) {
+            collect_protocol_fee(registry_addr, input_token, protocol_fee, intent_id);
         };
 
         // Transfer remaining input tokens from escrow to solver
@@ -269,7 +261,6 @@ module velox::settlement {
     public entry fun solve_limit_order(
         solver: &signer,
         registry_addr: address,
-        fee_collector_addr: address,
         intent_id: u64,
         fill_amount: u64,
         output_amount: u64
@@ -316,23 +307,16 @@ module velox::settlement {
         let execution_price = (output_amount * BPS_DENOMINATOR) / fill_amount;
         assert!(execution_price >= limit_price, errors::min_amount_not_met());
 
-        // Calculate protocol fee from fill amount
-        let protocol_fee = calculate_fee(fill_amount, PROTOCOL_FEE_BPS);
-        let solver_receives = fill_amount - protocol_fee;
+        // Calculate protocol fee and solver receives
+        let (protocol_fee, solver_receives) = calculate_fees_and_transfers(registry_addr, fill_amount);
 
         // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
         primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Collect protocol fee
-        if (protocol_fee > 0) {
-            collect_protocol_fee(
-                registry_addr,
-                fee_collector_addr,
-                input_token,
-                protocol_fee,
-                intent_id
-            );
+        // Collect protocol fee if applicable
+        if (protocol_fee > 0 && exists<FeeCollector>(registry_addr)) {
+            collect_protocol_fee(registry_addr, input_token, protocol_fee, intent_id);
         };
 
         // Transfer remaining input tokens from escrow to solver
@@ -380,7 +364,6 @@ module velox::settlement {
     public entry fun solve_twap_chunk(
         solver: &signer,
         registry_addr: address,
-        fee_collector_addr: address,
         scheduled_registry_addr: address,
         intent_id: u64,
         output_amount: u64
@@ -419,23 +402,16 @@ module velox::settlement {
         let min_output = chunk_amount - ((chunk_amount * max_slippage_bps) / BPS_DENOMINATOR);
         assert!(output_amount >= min_output, errors::min_amount_not_met());
 
-        // Calculate protocol fee from chunk amount
-        let protocol_fee = calculate_fee(chunk_amount, PROTOCOL_FEE_BPS);
-        let solver_receives = chunk_amount - protocol_fee;
+        // Calculate protocol fee and solver receives
+        let (protocol_fee, solver_receives) = calculate_fees_and_transfers(registry_addr, chunk_amount);
 
         // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
         primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Collect protocol fee
-        if (protocol_fee > 0) {
-            collect_protocol_fee(
-                registry_addr,
-                fee_collector_addr,
-                input_token,
-                protocol_fee,
-                intent_id
-            );
+        // Collect protocol fee if applicable
+        if (protocol_fee > 0 && exists<FeeCollector>(registry_addr)) {
+            collect_protocol_fee(registry_addr, input_token, protocol_fee, intent_id);
         };
 
         // Transfer remaining chunk input from escrow to solver
@@ -463,7 +439,6 @@ module velox::settlement {
     public entry fun solve_dca_period(
         solver: &signer,
         registry_addr: address,
-        fee_collector_addr: address,
         scheduled_registry_addr: address,
         intent_id: u64,
         output_amount: u64
@@ -497,23 +472,16 @@ module velox::settlement {
         let total_periods = types::get_dca_total_periods(intent);
         let periods_executed = scheduled::get_chunks_executed(scheduled_registry_addr, intent_id);
 
-        // Calculate protocol fee from period amount
-        let protocol_fee = calculate_fee(amount_per_period, PROTOCOL_FEE_BPS);
-        let solver_receives = amount_per_period - protocol_fee;
+        // Calculate protocol fee and solver receives
+        let (protocol_fee, solver_receives) = calculate_fees_and_transfers(registry_addr, amount_per_period);
 
         // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
         primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Collect protocol fee
-        if (protocol_fee > 0) {
-            collect_protocol_fee(
-                registry_addr,
-                fee_collector_addr,
-                input_token,
-                protocol_fee,
-                intent_id
-            );
+        // Collect protocol fee if applicable
+        if (protocol_fee > 0 && exists<FeeCollector>(registry_addr)) {
+            collect_protocol_fee(registry_addr, input_token, protocol_fee, intent_id);
         };
 
         // Transfer remaining period input from escrow to solver
@@ -542,7 +510,6 @@ module velox::settlement {
     public entry fun settle_from_auction(
         solver: &signer,
         registry_addr: address,
-        fee_collector_addr: address,
         auction_state_addr: address,
         intent_id: u64
     ) acquires FeeCollector {
@@ -590,23 +557,16 @@ module velox::settlement {
         let input_token = types::get_input_token(intent);
         let output_token = types::get_output_token(intent);
 
-        // Calculate protocol fee from input amount
-        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
-        let solver_receives = input_amount - protocol_fee;
+        // Calculate protocol fee and solver receives
+        let (protocol_fee, solver_receives) = calculate_fees_and_transfers(registry_addr, input_amount);
 
         // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
         primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Collect protocol fee
-        if (protocol_fee > 0) {
-            collect_protocol_fee(
-                registry_addr,
-                fee_collector_addr,
-                input_token,
-                protocol_fee,
-                intent_id
-            );
+        // Collect protocol fee if applicable
+        if (protocol_fee > 0 && exists<FeeCollector>(registry_addr)) {
+            collect_protocol_fee(registry_addr, input_token, protocol_fee, intent_id);
         };
 
         // Transfer remaining input tokens from escrow to solver
@@ -647,7 +607,6 @@ module velox::settlement {
     public entry fun solve_with_routing(
         solver: &signer,
         registry_addr: address,
-        fee_collector_addr: address,
         router_addr: address,
         intent_id: u64,
         route_input: u64,
@@ -689,23 +648,16 @@ module velox::settlement {
         // Verify route input matches escrowed amount
         assert!(route_input == input_amount, errors::insufficient_input_amount());
 
-        // Calculate protocol fee from input amount
-        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
-        let solver_receives = input_amount - protocol_fee;
+        // Calculate protocol fee and solver receives based on fee collector status
+        let (protocol_fee, solver_receives) = calculate_fees_and_transfers(registry_addr, input_amount);
 
         // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
         primary_fungible_store::transfer(solver, output_token_obj, user, route_output);
 
-        // Collect protocol fee
-        if (protocol_fee > 0) {
-            collect_protocol_fee(
-                registry_addr,
-                fee_collector_addr,
-                input_token,
-                protocol_fee,
-                intent_id
-            );
+        // Collect protocol fee if applicable
+        if (protocol_fee > 0 && exists<FeeCollector>(registry_addr)) {
+            collect_protocol_fee(registry_addr, input_token, protocol_fee, intent_id);
         };
 
         // Transfer remaining input tokens from escrow to solver
@@ -753,7 +705,6 @@ module velox::settlement {
     public entry fun settle_dutch_auction(
         solver: &signer,
         registry_addr: address,
-        fee_collector_addr: address,
         auction_state_addr: address,
         intent_id: u64
     ) acquires FeeCollector {
@@ -797,23 +748,16 @@ module velox::settlement {
         let input_token = types::get_input_token(intent);
         let output_token = types::get_output_token(intent);
 
-        // Calculate protocol fee from input amount
-        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
-        let solver_receives = input_amount - protocol_fee;
+        // Calculate protocol fee and solver receives based on fee collector status
+        let (protocol_fee, solver_receives) = calculate_fees_and_transfers(registry_addr, input_amount);
 
         // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
         primary_fungible_store::transfer(solver, output_token_obj, user, accepted_price);
 
-        // Collect protocol fee
-        if (protocol_fee > 0) {
-            collect_protocol_fee(
-                registry_addr,
-                fee_collector_addr,
-                input_token,
-                protocol_fee,
-                intent_id
-            );
+        // Collect protocol fee if applicable
+        if (protocol_fee > 0 && exists<FeeCollector>(registry_addr)) {
+            collect_protocol_fee(registry_addr, input_token, protocol_fee, intent_id);
         };
 
         // Transfer remaining input tokens from escrow to solver
@@ -848,15 +792,29 @@ module velox::settlement {
 
     // ============ Internal Functions ============
 
+    /// Calculate protocol fee and solver receives amount
+    /// If FeeCollector is not initialized at registry_addr, returns (0, input_amount)
+    fun calculate_fees_and_transfers(registry_addr: address, input_amount: u64): (u64, u64) {
+        if (exists<FeeCollector>(registry_addr)) {
+            // FeeCollector initialized - calculate fee
+            let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
+            let solver_receives = input_amount - protocol_fee;
+            (protocol_fee, solver_receives)
+        } else {
+            // FeeCollector not initialized - no fee collected
+            (0, input_amount)
+        }
+    }
+
     /// Collect protocol fee and transfer to treasury
+    /// Uses registry_addr as the FeeCollector location
     fun collect_protocol_fee(
         registry_addr: address,
-        fee_collector_addr: address,
         token: address,
         amount: u64,
         intent_id: u64
     ) acquires FeeCollector {
-        let fee_collector = borrow_global_mut<FeeCollector>(fee_collector_addr);
+        let fee_collector = borrow_global_mut<FeeCollector>(registry_addr);
         let treasury = fee_collector.treasury;
 
         // Transfer fee from escrow to treasury
@@ -915,6 +873,15 @@ module velox::settlement {
     /// Calculate protocol fee for a given input amount
     public fun calculate_protocol_fee(input_amount: u64): u64 {
         calculate_fee(input_amount, PROTOCOL_FEE_BPS)
+    }
+
+    #[view]
+    /// Calculate user output amount (deprecated - users now receive full output)
+    /// Kept for backward compatibility - returns output as-is since fees are on input
+    public fun calculate_user_output(output_amount: u64): u64 {
+        // Fees are now collected from input tokens, not output
+        // User receives the full output amount
+        output_amount
     }
 
     #[view]
