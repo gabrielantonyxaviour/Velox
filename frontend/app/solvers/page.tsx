@@ -1,54 +1,69 @@
 'use client';
 
-import { useState } from 'react';
 import { Header } from '@/app/components/layout/header';
 import { Footer } from '@/app/components/layout/footer';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
-import { SolverStatsCard } from './components/solver-stats-card';
-import { SolverLookup } from './components/solver-lookup';
-import { RegisterSolverCard } from './components/register-solver-card';
-import { MySolverCard } from './components/my-solver-card';
+import { useSolverStats } from '@/app/hooks/use-solvers';
+import { SolverList } from './components/solver-list';
+import { Users, UserCheck, Coins, Loader2 } from 'lucide-react';
+
+function NetworkStats() {
+  const { stats, isLoading } = useSolverStats();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        <span className="text-sm">Loading stats...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-3">
+      <div className="flex items-center gap-2">
+        <Users className="w-4 h-4 text-primary" />
+        <span className="text-sm text-muted-foreground">Total Solvers:</span>
+        <span className="font-semibold">{stats?.totalSolvers ?? 0}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <UserCheck className="w-4 h-4 text-primary" />
+        <span className="text-sm text-muted-foreground">Active:</span>
+        <span className="font-semibold text-primary">{stats?.activeSolvers ?? 0}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Coins className="w-4 h-4 text-primary" />
+        <span className="text-sm text-muted-foreground">Total Staked:</span>
+        <span className="font-semibold">
+          {stats?.totalStaked ? (Number(stats.totalStaked) / 1e8).toFixed(2) : '0'} MOVE
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function SolversPage() {
   const { walletAddress } = useWalletContext();
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const handleRefresh = () => {
-    setRefreshKey((prev) => prev + 1);
-  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background">
       <Header address={walletAddress || ''} />
 
-      <main className="flex-1 container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto space-y-8">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2">Solver Dashboard</h1>
-            <p className="text-muted-foreground">
-              View solver statistics, register as a solver, or lookup solver performance
+      <main className="flex-1 container mx-auto px-4 py-6 flex flex-col min-h-0">
+        {/* Header Section - Title left, Stats right */}
+        <div className="flex items-start justify-between mb-6 flex-shrink-0">
+          <div>
+            <h1 className="text-3xl font-bold">Solver Network</h1>
+            <p className="text-muted-foreground mt-1">
+              Explore registered solvers and their performance metrics
             </p>
           </div>
+          <NetworkStats />
+        </div>
 
-          {/* Global Stats */}
-          <SolverStatsCard key={`stats-${refreshKey}`} />
-
-          {/* My Solver Status (if connected) */}
-          {walletAddress && (
-            <MySolverCard
-              key={`my-solver-${refreshKey}`}
-              address={walletAddress}
-              onRefresh={handleRefresh}
-            />
-          )}
-
-          {/* Register as Solver */}
-          {walletAddress && (
-            <RegisterSolverCard onSuccess={handleRefresh} />
-          )}
-
-          {/* Solver Lookup */}
-          <SolverLookup key={`lookup-${refreshKey}`} />
+        {/* Full-height Solver List */}
+        <div className="flex-1 min-h-0">
+          <SolverList />
         </div>
       </main>
 
