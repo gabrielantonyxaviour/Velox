@@ -5,6 +5,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
+import { SlippageSelector } from './slippage-selector';
 import { AuctionTypeSelector } from './auction-type-selector';
 import { DutchParamsInput } from './dutch-params-input';
 import { DutchAuctionPreview } from './dutch-auction-preview';
@@ -69,6 +70,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
   const [sealedBidDuration, setSealedBidDuration] = useState(SEALED_BID_DURATION_OPTIONS[1].value);
   const [dutchStartMultiplier, setDutchStartMultiplier] = useState(120);
   const [dutchDuration, setDutchDuration] = useState(60);
+  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
 
   const minAmountOutBigInt = BigInt(Math.floor(parseFloat(minOutputAmount || '0') * 1e8));
 
@@ -116,7 +118,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
           parseFloat(inputAmount),
           inputToken.symbol,
           outputToken.symbol,
-          DEFAULT_SLIPPAGE
+          slippage
         );
 
         setExchangeRate(result.exchangeRate);
@@ -136,7 +138,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
 
     const timeoutId = setTimeout(fetchQuote, 300);
     return () => clearTimeout(timeoutId);
-  }, [inputAmount, inputToken, outputToken]);
+  }, [inputAmount, inputToken, outputToken, slippage]);
 
   const handleSwapTokens = () => {
     const temp = inputToken;
@@ -448,9 +450,12 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
           </div>
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          Slippage tolerance: {DEFAULT_SLIPPAGE}%
-        </div>
+        {/* Slippage Selector */}
+        <SlippageSelector
+          value={slippage}
+          onChange={setSlippage}
+          disabled={isLoading}
+        />
 
         {error && (
           <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">

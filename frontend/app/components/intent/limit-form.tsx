@@ -8,6 +8,7 @@ import { Switch } from '@/app/components/ui/switch';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
 import { PriceInput } from './price-input';
+import { SlippageSelector } from './slippage-selector';
 import { TransactionConfirmDialog } from './transaction-confirm-dialog';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
@@ -29,6 +30,8 @@ const EXPIRY_OPTIONS = [
   { label: '7d', value: 7 * 24 * 60 * 60 },
 ];
 
+const DEFAULT_SLIPPAGE = 0.5;
+
 export function LimitForm({ onSuccess, onError }: LimitFormProps) {
   const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
   const txConfirm = useTransactionConfirm();
@@ -39,6 +42,7 @@ export function LimitForm({ onSuccess, onError }: LimitFormProps) {
   const [limitPrice, setLimitPrice] = useState('');
   const [expiry, setExpiry] = useState(EXPIRY_OPTIONS[1].value);
   const [partialFill, setPartialFill] = useState(true);
+  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const [inputBalance, setInputBalance] = useState<string>('');
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
   const [exchangeRate, setExchangeRate] = useState<number>(0);
@@ -272,6 +276,13 @@ export function LimitForm({ onSuccess, onError }: LimitFormProps) {
             disabled={isLoading}
           />
         </div>
+
+        {/* Slippage Selector */}
+        <SlippageSelector
+          value={slippage}
+          onChange={setSlippage}
+          disabled={isLoading}
+        />
 
         {error && (
           <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
