@@ -16,7 +16,7 @@ import { getProtocolFeeBps, getSolverFeeBps } from '@/app/lib/velox/contract-rea
 import { isSponsorshipEnabled } from '@/app/lib/shinami/client';
 import { Loader2, ArrowRight, Info, Fuel, Sparkles } from 'lucide-react';
 
-export type IntentType = 'swap' | 'limit_order' | 'dca' | 'twap';
+export type IntentType = 'swap' | 'limit_order' | 'dca' | 'twap' | 'auction_sealed_bid' | 'auction_dutch';
 
 export interface TransactionDetails {
   type: IntentType;
@@ -39,6 +39,10 @@ export interface TransactionDetails {
   numChunks?: number;
   maxSlippageBps?: number;
   startTime?: number;
+  // Auction specific
+  auctionDuration?: number;
+  dutchStartPrice?: string;
+  dutchEndPrice?: string;
 }
 
 interface TransactionConfirmDialogProps {
@@ -73,6 +77,8 @@ const GAS_ESTIMATES: Record<IntentType, number> = {
   limit_order: 6000,
   dca: 8000,
   twap: 8000,
+  auction_sealed_bid: 7000,
+  auction_dutch: 7000,
 };
 
 // Approximate MOVE price in USD (could be fetched from an oracle)
@@ -98,6 +104,8 @@ function getIntentTitle(type: IntentType): string {
     case 'limit_order': return 'Limit Order';
     case 'dca': return 'DCA Order';
     case 'twap': return 'TWAP Order';
+    case 'auction_sealed_bid': return 'Sealed-Bid Auction';
+    case 'auction_dutch': return 'Dutch Auction';
   }
 }
 
@@ -279,6 +287,48 @@ export function TransactionConfirmDialog({
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Max Slippage</span>
                   <span>{details.maxSlippageBps ? (details.maxSlippageBps / 100).toFixed(2) : '0.5'}%</span>
+                </div>
+              </>
+            )}
+
+            {details.type === 'auction_sealed_bid' && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Auction Type</span>
+                  <span className="text-primary font-medium">Sealed-Bid</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Bid Duration</span>
+                  <span>{details.auctionDuration ? formatDeadline(details.auctionDuration) : '--'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Order Deadline</span>
+                  <span>{details.deadline ? formatDeadline(details.deadline) : '--'}</span>
+                </div>
+              </>
+            )}
+
+            {details.type === 'auction_dutch' && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Auction Type</span>
+                  <span className="text-amber-400 font-medium">Dutch Auction</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Start Price</span>
+                  <span>{details.dutchStartPrice} {details.outputToken.symbol}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">End Price (Min)</span>
+                  <span>{details.dutchEndPrice} {details.outputToken.symbol}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Price Decay Duration</span>
+                  <span>{details.auctionDuration ? formatDeadline(details.auctionDuration) : '--'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Order Deadline</span>
+                  <span>{details.deadline ? formatDeadline(details.deadline) : '--'}</span>
                 </div>
               </>
             )}

@@ -8,8 +8,14 @@ import { AmountInput } from './amount-input';
 import { AuctionTypeSelector } from './auction-type-selector';
 import { DutchParamsInput } from './dutch-params-input';
 import { DutchAuctionPreview } from './dutch-auction-preview';
+import { TransactionConfirmDialog } from './transaction-confirm-dialog';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
+import {
+  useTransactionConfirm,
+  createSealedBidAuctionDetails,
+  createDutchAuctionDetails,
+} from '@/app/hooks/use-transaction-confirm';
 import {
   submitSwapWithAuction,
   submitSwapWithAuctionNative,
@@ -44,6 +50,7 @@ const DEFAULT_SLIPPAGE = 0.5;
 
 export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
   const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
+  const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
   const [outputToken, setOutputToken] = useState<Token | null>(null);
@@ -149,6 +156,82 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
     return null;
   };
 
+  const executeTransaction = async () => {
+    if (!walletAddress || !inputToken || !outputToken) return;
+
+    const amountIn = BigInt(Math.floor(parseFloat(inputAmount) * Math.pow(10, inputToken.decimals)));
+    const minAmountOut = BigInt(Math.floor(parseFloat(minOutputAmount) * Math.pow(10, outputToken.decimals)));
+    const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline;
+
+    let txHash: string;
+
+    if (auctionType === AuctionType.SEALED_BID) {
+      if (isPrivy && signRawHash && publicKeyHex) {
+        txHash = await submitSwapWithAuction(
+          walletAddress,
+          inputToken.address,
+          outputToken.address,
+          amountIn,
+          minAmountOut,
+          deadlineTimestamp,
+          sealedBidDuration,
+          signRawHash,
+          publicKeyHex
+        );
+      } else if (signTransaction && signAndSubmitTransaction) {
+        txHash = await submitSwapWithAuctionNative(
+          walletAddress,
+          inputToken.address,
+          outputToken.address,
+          amountIn,
+          minAmountOut,
+          deadlineTimestamp,
+          sealedBidDuration,
+          signTransaction,
+          signAndSubmitTransaction
+        );
+      } else {
+        throw new Error('No wallet connected');
+      }
+    } else {
+      // Dutch auction
+      const startPrice = (minAmountOut * BigInt(dutchStartMultiplier)) / BigInt(100);
+      if (isPrivy && signRawHash && publicKeyHex) {
+        txHash = await submitSwapWithDutchAuction(
+          walletAddress,
+          inputToken.address,
+          outputToken.address,
+          amountIn,
+          minAmountOut,
+          startPrice,
+          deadlineTimestamp,
+          dutchDuration,
+          signRawHash,
+          publicKeyHex
+        );
+      } else if (signTransaction && signAndSubmitTransaction) {
+        txHash = await submitSwapWithDutchAuctionNative(
+          walletAddress,
+          inputToken.address,
+          outputToken.address,
+          amountIn,
+          minAmountOut,
+          startPrice,
+          deadlineTimestamp,
+          dutchDuration,
+          signTransaction,
+          signAndSubmitTransaction
+        );
+      } else {
+        throw new Error('No wallet connected');
+      }
+    }
+
+    setInputAmount('');
+    setMinOutputAmount('');
+    onSuccess?.(txHash);
+  };
+
   const handleSubmit = async () => {
     const validationError = validateForm();
     if (validationError) {
@@ -158,81 +241,40 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
 
     if (!walletAddress || !inputToken || !outputToken) return;
 
-    setIsLoading(true);
     setError(null);
 
+    // Show confirmation dialog
+    if (auctionType === AuctionType.SEALED_BID) {
+      txConfirm.openConfirmation(
+        createSealedBidAuctionDetails(
+          inputToken,
+          outputToken,
+          inputAmount,
+          minOutputAmount,
+          sealedBidDuration,
+          deadline
+        )
+      );
+    } else {
+      const dutchStartPriceValue = ((parseFloat(minOutputAmount) * dutchStartMultiplier) / 100).toFixed(6);
+      txConfirm.openConfirmation(
+        createDutchAuctionDetails(
+          inputToken,
+          outputToken,
+          inputAmount,
+          minOutputAmount,
+          dutchStartPriceValue,
+          dutchDuration,
+          deadline
+        )
+      );
+    }
+  };
+
+  const handleConfirmTransaction = async () => {
+    setIsLoading(true);
     try {
-      const amountIn = BigInt(Math.floor(parseFloat(inputAmount) * Math.pow(10, inputToken.decimals)));
-      const minAmountOut = BigInt(Math.floor(parseFloat(minOutputAmount) * Math.pow(10, outputToken.decimals)));
-      const deadlineTimestamp = Math.floor(Date.now() / 1000) + deadline;
-
-      let txHash: string;
-
-      if (auctionType === AuctionType.SEALED_BID) {
-        if (isPrivy && signRawHash && publicKeyHex) {
-          txHash = await submitSwapWithAuction(
-            walletAddress,
-            inputToken.address,
-            outputToken.address,
-            amountIn,
-            minAmountOut,
-            deadlineTimestamp,
-            sealedBidDuration,
-            signRawHash,
-            publicKeyHex
-          );
-        } else if (signTransaction && signAndSubmitTransaction) {
-          txHash = await submitSwapWithAuctionNative(
-            walletAddress,
-            inputToken.address,
-            outputToken.address,
-            amountIn,
-            minAmountOut,
-            deadlineTimestamp,
-            sealedBidDuration,
-            signTransaction,
-            signAndSubmitTransaction
-          );
-        } else {
-          throw new Error('No wallet connected');
-        }
-      } else {
-        // Dutch auction
-        const startPrice = (minAmountOut * BigInt(dutchStartMultiplier)) / BigInt(100);
-        if (isPrivy && signRawHash && publicKeyHex) {
-          txHash = await submitSwapWithDutchAuction(
-            walletAddress,
-            inputToken.address,
-            outputToken.address,
-            amountIn,
-            minAmountOut,
-            startPrice,
-            deadlineTimestamp,
-            dutchDuration,
-            signRawHash,
-            publicKeyHex
-          );
-        } else if (signTransaction && signAndSubmitTransaction) {
-          txHash = await submitSwapWithDutchAuctionNative(
-            walletAddress,
-            inputToken.address,
-            outputToken.address,
-            amountIn,
-            minAmountOut,
-            startPrice,
-            deadlineTimestamp,
-            dutchDuration,
-            signTransaction,
-            signAndSubmitTransaction
-          );
-        } else {
-          throw new Error('No wallet connected');
-        }
-      }
-
-      setInputAmount('');
-      setMinOutputAmount('');
-      onSuccess?.(txHash);
+      await txConfirm.confirmAndExecute(executeTransaction);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Transaction failed';
       setError(errorMsg);
@@ -446,6 +488,18 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
           )}
         </Button>
       </div>
+
+      {/* Transaction Confirmation Dialog */}
+      <TransactionConfirmDialog
+        open={txConfirm.isOpen}
+        onOpenChange={(open) => {
+          if (!open) txConfirm.closeConfirmation();
+        }}
+        details={txConfirm.details}
+        onConfirm={handleConfirmTransaction}
+        onCancel={txConfirm.closeConfirmation}
+        isLoading={isLoading || txConfirm.isConfirming}
+      />
     </Card>
   );
 }

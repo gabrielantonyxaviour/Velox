@@ -11,6 +11,7 @@ import {
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { SimpleConfirmDialog, SimpleTransactionDetails } from './ui/simple-confirm-dialog';
 import { Loader2, Droplets, Check, ExternalLink } from 'lucide-react';
 import { TOKEN_LIST, Token } from '../constants/tokens';
 import { useFaucet } from '../hooks/use-faucet';
@@ -27,6 +28,10 @@ export function FaucetDialog({ open, onOpenChange, address }: FaucetDialogProps)
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [amount, setAmount] = useState('100');
 
+  // Confirmation dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDetails, setConfirmDetails] = useState<SimpleTransactionDetails | null>(null);
+
   const { mint, status, error, txHash, reset } = useFaucet();
 
   // Show toast notification when mint succeeds or fails
@@ -38,9 +43,29 @@ export function FaucetDialog({ open, onOpenChange, address }: FaucetDialogProps)
     }
   }, [status, txHash, amount, selectedToken, error]);
 
-  const handleMint = async () => {
+  const handleMintClick = () => {
     if (!selectedToken || !amount) return;
+
+    setConfirmDetails({
+      title: 'Mint Test Tokens',
+      description: 'Confirm minting test tokens to your wallet.',
+      items: [
+        { label: 'Token', value: selectedToken.symbol },
+        { label: 'Amount', value: `${amount} ${selectedToken.symbol}` },
+        { label: 'Recipient', value: `${address.slice(0, 8)}...${address.slice(-6)}` },
+      ],
+    });
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmMint = async () => {
+    if (!selectedToken || !amount) return;
+    setConfirmOpen(false);
     await mint(selectedToken, amount);
+  };
+
+  const handleCancelConfirm = () => {
+    setConfirmOpen(false);
   };
 
   const handleReset = () => {
@@ -88,9 +113,19 @@ export function FaucetDialog({ open, onOpenChange, address }: FaucetDialogProps)
             onAmountChange={setAmount}
             error={error}
             status={status}
-            onMint={handleMint}
+            onMint={handleMintClick}
           />
         )}
+
+        <SimpleConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          details={confirmDetails}
+          onConfirm={handleConfirmMint}
+          onCancel={handleCancelConfirm}
+          isLoading={status === 'loading'}
+          confirmText="Mint Tokens"
+        />
       </DialogContent>
     </Dialog>
   );
