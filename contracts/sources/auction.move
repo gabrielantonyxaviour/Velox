@@ -347,14 +347,10 @@ module velox::auction {
         let deadline = dutch.start_time + dutch.duration;
         assert!(now <= deadline, errors::dutch_auction_expired());
 
-        // Calculate current price using QUADRATIC decay
-        // Formula: price = start_price - price_range * (elapsed/duration)^2
-        // Using integer math: decay = price_range * elapsed^2 / duration^2
+        // Calculate current price
         let elapsed = now - dutch.start_time;
-        let elapsed_squared = elapsed * elapsed;
-        let duration_squared = dutch.duration * dutch.duration;
         let price_range = dutch.start_price - dutch.end_price;
-        let decay = (price_range * elapsed_squared) / duration_squared;
+        let decay = (price_range * elapsed) / dutch.duration;
         let current_price = dutch.start_price - decay;
 
         // Mark winner
@@ -572,11 +568,8 @@ module velox::auction {
             return dutch.end_price
         };
 
-        // QUADRATIC decay: price = start_price - price_range * (elapsed/duration)^2
-        let elapsed_squared = elapsed * elapsed;
-        let duration_squared = dutch.duration * dutch.duration;
         let price_range = dutch.start_price - dutch.end_price;
-        let decay = (price_range * elapsed_squared) / duration_squared;
+        let decay = (price_range * elapsed) / dutch.duration;
 
         dutch.start_price - decay
     }

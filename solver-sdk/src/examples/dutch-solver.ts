@@ -75,17 +75,12 @@ async function handleDutchAuction(solver: VeloxSolver, intent: Intent, dutch: No
     return;
   }
 
-  // Get current price from contract
+  // Get current price
   const currentPrice = await solver.getDutchPrice(intent.id);
-  console.log(`Current Price (from contract): ${currentPrice}`);
-
-  // Also calculate price locally for verification (uses quadratic curve)
-  const localPrice = solver.getCurrentDutchPriceLocal(dutch);
-  console.log(`Current Price (local calc): ${localPrice}`);
+  console.log(`Current Price: ${currentPrice}`);
 
   // Calculate our max acceptable price
   // Strategy: Accept at any price in the lower 25% of the range
-  // Note: With quadratic curve, prices stay higher longer initially
   const priceRange = dutch.startPrice - dutch.endPrice;
   const maxPrice = dutch.endPrice + (priceRange / 4n);
   console.log(`Max Acceptable Price: ${maxPrice}`);
@@ -97,10 +92,9 @@ async function handleDutchAuction(solver: VeloxSolver, intent: Intent, dutch: No
   } else {
     console.log(`\nPrice too high. Monitoring for price drop...`);
 
-    // Calculate time to wait using quadratic curve inverse
-    // Formula: t = duration * sqrt((startPrice - targetPrice) / priceRange)
+    // Calculate time to wait
     const timeToPrice = solver.calculateTimeToPrice(dutch, maxPrice);
-    console.log(`Estimated time to target (quadratic): ${timeToPrice}s`);
+    console.log(`Estimated time to target: ${timeToPrice}s`);
 
     // Monitor and accept when price reaches threshold
     const result = await solver.monitorAndAcceptDutch(
