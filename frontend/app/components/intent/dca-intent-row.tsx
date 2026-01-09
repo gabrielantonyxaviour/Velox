@@ -38,9 +38,10 @@ function formatTime(timestamp: number): string {
 }
 
 function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  const rounded = Math.ceil(seconds);
+  if (rounded < 60) return `${rounded}s`;
+  if (rounded < 3600) return `${Math.floor(rounded / 60)}m`;
+  return `${Math.floor(rounded / 3600)}h ${Math.floor((rounded % 3600) / 60)}m`;
 }
 
 function getTokenSymbol(address: string): string {
