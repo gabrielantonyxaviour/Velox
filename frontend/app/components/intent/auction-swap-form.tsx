@@ -287,7 +287,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
   const availableOutputTokens = TOKEN_LIST.filter((t) => t.address !== inputToken?.address);
 
   return (
-    <Card className="w-full max-w-md mx-auto p-6 bg-card border-border">
+    <Card className="w-full p-6 bg-card border-border">
       <div className="flex items-center gap-2 mb-6">
         {auctionType === AUCTION_TYPE.SEALED_BID ? (
           <Gavel className="w-5 h-5 text-primary" />
