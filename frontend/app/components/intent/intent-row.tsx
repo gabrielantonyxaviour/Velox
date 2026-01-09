@@ -1,6 +1,6 @@
 'use client';
 
-import { IntentRecord } from '@/app/lib/velox/types';
+import { IntentRecord, isAuctionActive } from '@/app/lib/velox/types';
 import { DCAIntentRow } from './dca-intent-row';
 import { TWAPIntentRow } from './twap-intent-row';
 import { SwapIntentRow } from './swap-intent-row';
@@ -17,8 +17,8 @@ interface IntentRowProps {
 }
 
 export function IntentRow({ intent, onCancel, onClick, isCancelling, compact, periodFillTxHashes }: IntentRowProps) {
-  // Route to auction component if it's an auction intent
-  if (intent.auctionType) {
+  // Route to auction component if it's an auction intent (active or completed auction)
+  if (intent.auction.type !== 'none') {
     return (
       <AuctionIntentRow
         intent={intent}
@@ -31,7 +31,7 @@ export function IntentRow({ intent, onCancel, onClick, isCancelling, compact, pe
   }
 
   // Route to specialized row components based on intent type
-  switch (intent.intentType) {
+  switch (intent.intent.type) {
     case 'dca':
       return (
         <DCAIntentRow

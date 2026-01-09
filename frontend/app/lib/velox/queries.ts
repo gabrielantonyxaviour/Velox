@@ -1,38 +1,17 @@
 import { aptos, VELOX_ADDRESS, MOVEMENT_CONFIGS, CURRENT_NETWORK } from '../aptos';
-import { IntentRecord, IntentType, parseIntentStatus, parseIntentType } from './types';
-
-// Event types for parsing
-interface IntentCreatedEvent {
-  intent_id: string;
-  user: string;
-  input_token: string;
-  output_token: string;
-  amount_in: string;
-  intent_type: number;
-  deadline: string;
-  created_at: string;
-}
-
-interface IntentFilledEvent {
-  intent_id: string;
-  user: string;
-  solver: string;
-  input_amount: string;
-  output_amount: string;
-  execution_price: string;
-  protocol_fee: string;
-  solver_fee: string;
-  filled_at: string;
-}
-
-// Cache for event data by intent_id
-interface IntentEventData {
-  submissionTxHash?: string;
-  settlementTxHash?: string;
-  outputAmount?: bigint;
-}
-
-const eventCache: Map<string, IntentEventData> = new Map();
+import {
+  IntentRecord,
+  IntentStatus,
+  IntentType,
+  Intent,
+  AuctionState,
+  AuctionType,
+  Fill,
+  Bid,
+  parseIntentStatus,
+  parseIntentType,
+  parseAuctionType,
+} from './types';
 
 // Helper to safely get string from unknown
 const safeGetString = (obj: Record<string, unknown> | undefined, key: string): string => {
@@ -42,33 +21,111 @@ const safeGetString = (obj: Record<string, unknown> | undefined, key: string): s
   return String(value);
 };
 
-// Helper to parse status from Move 2.0 enum format
-function parseStatusFromMove(rawStatus: unknown): number {
-  if (typeof rawStatus === 'number') return rawStatus;
-
+/**
+ * Parse Move 2.0 enum variant to status
+ */
+function parseStatusFromMove(rawStatus: unknown): IntentStatus {
   if (typeof rawStatus === 'string') {
-    const statusMap: Record<string, number> = {
-      'pending': 0, 'Pending': 0,
-      'partially_filled': 1, 'PartiallyFilled': 1,
-      'filled': 2, 'Filled': 2,
-      'cancelled': 3, 'Cancelled': 3,
-      'expired': 4, 'Expired': 4,
-    };
-    return statusMap[rawStatus] ?? (parseInt(rawStatus, 10) || 0);
+    return parseIntentStatus(rawStatus);
   }
 
   if (rawStatus && typeof rawStatus === 'object') {
     const statusObj = rawStatus as Record<string, unknown>;
-    if ('__variant__' in statusObj) {
-      const variant = statusObj.__variant__ as string;
-      const variantMap: Record<string, number> = {
-        'Pending': 0, 'PartiallyFilled': 1, 'Filled': 2, 'Cancelled': 3, 'Expired': 4,
-      };
-      return variantMap[variant] ?? 0;
+    if ('__variant__' in statusObj || 'type' in statusObj) {
+      const variant = (statusObj.__variant__ || statusObj.type) as string;
+      return parseIntentStatus(variant);
     }
   }
 
-  return 0;
+  return 'active';
+}
+
+/**
+ * Parse auction state from raw contract data
+ */
+function parseAuctionState(rawAuction: Record<string, unknown> | undefined): AuctionState {
+  if (!rawAuction) {
+    return { type: 'none' };
+  }
+
+  const variant = (rawAuction.__variant__ || rawAuction.type) as string || 'None';
+  const type = parseAuctionType(variant);
+
+  const state: AuctionState = { type };
+
+  // Parse type-specific fields
+  if (type === 'sealed_bid_active') {
+    state.endTime = Number(rawAuction.end_time || 0);
+    const rawBids = (rawAuction.bids || []) as Record<string, unknown>[];
+    state.bids = rawBids.map(b => ({
+      solver: String(b.solver || ''),
+      outputAmount: BigInt(String(b.output_amount || '0')),
+      submittedAt: Number(b.submitted_at || 0),
+    }));
+  } else if (type === 'sealed_bid_completed') {
+    state.winner = String(rawAuction.winner || '');
+    state.winningBid = BigInt(String(rawAuction.winning_bid || '0'));
+    state.fillDeadline = Number(rawAuction.fill_deadline || 0);
+  } else if (type === 'dutch_active') {
+    state.startPrice = BigInt(String(rawAuction.start_price || '0'));
+    state.endPrice = BigInt(String(rawAuction.end_price || '0'));
+    state.endTime = Number(rawAuction.end_time || 0);
+  } else if (type === 'dutch_accepted') {
+    state.acceptedPrice = BigInt(String(rawAuction.accepted_price || '0'));
+    state.winner = String(rawAuction.winner || '');
+  }
+
+  return state;
+}
+
+/**
+ * Parse fills from raw contract data
+ */
+function parseFills(rawFills: unknown): Fill[] {
+  if (!Array.isArray(rawFills)) return [];
+  return rawFills.map((f: Record<string, unknown>) => ({
+    solver: String(f.solver || ''),
+    inputAmount: BigInt(String(f.input_amount || '0')),
+    outputAmount: BigInt(String(f.output_amount || '0')),
+    filledAt: Number(f.filled_at || 0),
+  }));
+}
+
+/**
+ * Parse intent details from raw contract data
+ */
+function parseIntent(rawIntent: Record<string, unknown>): Intent {
+  const variant = (rawIntent.__variant__ || rawIntent.type) as string || 'Swap';
+  const type = parseIntentType(variant);
+
+  const intent: Intent = {
+    type,
+    inputToken: String(rawIntent.input_token || rawIntent.input_coin || ''),
+    outputToken: String(rawIntent.output_token || rawIntent.output_coin || ''),
+  };
+
+  // Parse type-specific fields
+  if (type === 'swap') {
+    intent.amountIn = BigInt(safeGetString(rawIntent, 'amount_in'));
+    intent.minAmountOut = BigInt(safeGetString(rawIntent, 'min_amount_out'));
+    intent.deadline = Number(safeGetString(rawIntent, 'deadline'));
+  } else if (type === 'limit_order') {
+    intent.amountIn = BigInt(safeGetString(rawIntent, 'amount_in') || safeGetString(rawIntent, 'amount'));
+    intent.limitPrice = BigInt(safeGetString(rawIntent, 'limit_price'));
+    intent.expiry = Number(safeGetString(rawIntent, 'expiry'));
+  } else if (type === 'twap') {
+    intent.totalAmount = BigInt(safeGetString(rawIntent, 'total_amount'));
+    intent.numChunks = Number(safeGetString(rawIntent, 'num_chunks'));
+    intent.intervalSeconds = Number(safeGetString(rawIntent, 'interval_seconds'));
+    intent.maxSlippageBps = Number(safeGetString(rawIntent, 'max_slippage_bps'));
+    intent.startTime = Number(safeGetString(rawIntent, 'start_time'));
+  } else if (type === 'dca') {
+    intent.amountPerPeriod = BigInt(safeGetString(rawIntent, 'amount_per_period'));
+    intent.totalPeriods = Number(safeGetString(rawIntent, 'total_periods'));
+    intent.intervalSeconds = Number(safeGetString(rawIntent, 'interval_seconds'));
+  }
+
+  return intent;
 }
 
 /**
@@ -90,86 +147,24 @@ export async function getIntent(intentId: bigint): Promise<IntentRecord | null> 
     const rawIntent = record.intent as Record<string, unknown>;
     if (!rawIntent) return null;
 
-    // Extract Move 2.0 __variant__ for intent type
-    const intentVariant = rawIntent.__variant__ as string || 'Swap';
-    const intentType = parseIntentType(intentVariant);
-
-    // Common fields from intent
-    const inputToken = String(rawIntent.input_token ?? rawIntent.input_coin ?? '');
-    const outputToken = String(rawIntent.output_token ?? rawIntent.output_coin ?? '');
-
-    // Get amount based on intent type
-    let amountIn = '0';
-    if (intentType === 'twap') {
-      amountIn = safeGetString(rawIntent, 'total_amount');
-    } else if (intentType === 'dca') {
-      const perPeriod = BigInt(safeGetString(rawIntent, 'amount_per_period'));
-      const periods = BigInt(safeGetString(rawIntent, 'total_periods'));
-      amountIn = (perPeriod * periods).toString();
-    } else {
-      amountIn = safeGetString(rawIntent, 'amount_in') || safeGetString(rawIntent, 'amount');
-    }
-
-    // Parse deadline/expiry
-    let deadline = 0;
-    if (intentType === 'swap') {
-      deadline = Number(safeGetString(rawIntent, 'deadline'));
-    } else if (intentType === 'limit_order') {
-      deadline = Number(safeGetString(rawIntent, 'expiry'));
-    } else if (intentType === 'twap') {
-      const startTime = Number(safeGetString(rawIntent, 'start_time'));
-      const numChunks = Number(safeGetString(rawIntent, 'num_chunks'));
-      const interval = Number(safeGetString(rawIntent, 'interval_seconds'));
-      deadline = startTime + (numChunks * interval);
-    } else if (intentType === 'dca') {
-      const nextExec = Number(safeGetString(rawIntent, 'next_execution'));
-      const periods = Number(safeGetString(rawIntent, 'total_periods'));
-      const interval = Number(safeGetString(rawIntent, 'interval_seconds'));
-      deadline = nextExec + (periods * interval);
-    }
-
-    // Parse status
-    const statusCode = parseStatusFromMove(record.status);
-    let status = parseIntentStatus(statusCode);
-
-    // Check if expired
-    if (status === 'pending' && deadline > 0) {
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      if (deadline < nowSeconds) status = 'expired';
-    }
+    const intent = parseIntent(rawIntent);
+    const auction = parseAuctionState(record.auction as Record<string, unknown>);
+    const fills = parseFills(record.fills);
+    const status = parseStatusFromMove(record.status);
 
     const intentRecord: IntentRecord = {
       id: BigInt(safeGetString(record, 'id')),
       user: String(record.user ?? ''),
-      intentType,
-      inputToken,
-      outputToken,
-      amountIn: BigInt(amountIn),
-      status,
-      filledAmount: BigInt(safeGetString(record, 'filled_amount')),
       createdAt: Number(record.created_at ?? 0),
-      deadline: deadline > 0 ? deadline : undefined,
-      solver: record.solver ? (record.solver as { vec: string[] }).vec?.[0] : undefined,
-      executionPrice: record.execution_price
-        ? BigInt((record.execution_price as { vec: string[] }).vec?.[0] ?? '0')
-        : undefined,
+      intent,
+      auction,
+      status,
+      escrowRemaining: BigInt(safeGetString(record, 'escrow_remaining')),
+      totalOutputReceived: BigInt(safeGetString(record, 'total_output_received')),
+      fills,
+      chunksExecuted: Number(safeGetString(record, 'chunks_executed')),
+      nextExecution: Number(safeGetString(record, 'next_execution')),
     };
-
-    // Add type-specific fields
-    if (intentType === 'swap') {
-      intentRecord.minAmountOut = BigInt(safeGetString(rawIntent, 'min_amount_out'));
-    } else if (intentType === 'limit_order') {
-      intentRecord.limitPrice = BigInt(safeGetString(rawIntent, 'limit_price'));
-      intentRecord.partialFillAllowed = rawIntent.partial_fill_allowed === true;
-    } else if (intentType === 'twap') {
-      intentRecord.numChunks = Number(safeGetString(rawIntent, 'num_chunks'));
-      intentRecord.intervalSeconds = Number(safeGetString(rawIntent, 'interval_seconds'));
-      intentRecord.maxSlippageBps = Number(safeGetString(rawIntent, 'max_slippage_bps'));
-    } else if (intentType === 'dca') {
-      intentRecord.totalPeriods = Number(safeGetString(rawIntent, 'total_periods'));
-      intentRecord.intervalSeconds = Number(safeGetString(rawIntent, 'interval_seconds'));
-      intentRecord.amountPerPeriod = BigInt(safeGetString(rawIntent, 'amount_per_period'));
-    }
 
     return intentRecord;
   } catch (error) {
@@ -217,7 +212,7 @@ export async function getTotalIntents(): Promise<bigint> {
     return BigInt(result[0] as string);
   } catch (error) {
     console.error('[Velox] Error fetching total intents:', error);
-    return BigInt(0);
+    return 0n;
   }
 }
 
@@ -235,7 +230,6 @@ export async function getTotalSolvers(): Promise<number> {
     });
     return Number(result[0] as string);
   } catch (error: unknown) {
-    // MISSING_DATA is expected when registry hasn't been initialized
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (!errorMessage.includes('MISSING_DATA')) {
       console.warn('[Velox] Error fetching total solvers:', error);
@@ -258,7 +252,6 @@ export async function getActiveSolverCount(): Promise<number> {
     });
     return Number(result[0] as string);
   } catch (error: unknown) {
-    // MISSING_DATA is expected when registry hasn't been initialized
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (!errorMessage.includes('MISSING_DATA')) {
       console.warn('[Velox] Error fetching active solver count:', error);
@@ -280,8 +273,7 @@ export async function getSolverReputation(solverAddress: string): Promise<number
       },
     });
     return Number(result[0] as string);
-  } catch (error) {
-    console.error('[Velox] Error fetching solver reputation:', error);
+  } catch {
     return 0;
   }
 }
@@ -299,8 +291,7 @@ export async function isSolverEligible(solverAddress: string): Promise<boolean> 
       },
     });
     return result[0] === true;
-  } catch (error) {
-    console.error('[Velox] Error checking solver eligibility:', error);
+  } catch {
     return false;
   }
 }
@@ -321,13 +312,20 @@ export async function getTokenBalance(
       },
     });
     return BigInt(result[0] as string);
-  } catch (error) {
-    console.error('[Velox] Error fetching token balance:', error);
-    return BigInt(0);
+  } catch {
+    return 0n;
   }
 }
 
-// ============ Event Fetching Functions ============
+// ============ Event Caching ============
+
+interface IntentEventData {
+  submissionTxHash?: string;
+  settlementTxHash?: string;
+  outputAmount?: bigint;
+}
+
+const eventCache: Map<string, IntentEventData> = new Map();
 
 const RPC_URL = MOVEMENT_CONFIGS[CURRENT_NETWORK].fullnode;
 
@@ -351,9 +349,9 @@ function parseEventsFromTransactions(transactions: Transaction[], intentIds: big
 
     for (const event of tx.events) {
       // Check for IntentCreated events
-      if (event.type === `${VELOX_ADDRESS}::submission::IntentCreated`) {
-        const data = event.data as unknown as IntentCreatedEvent;
-        const intentId = data.intent_id;
+      if (event.type.includes('::submission::IntentCreated')) {
+        const data = event.data;
+        const intentId = String(data.intent_id);
 
         if (intentIds.some(id => id.toString() === intentId)) {
           const existing = eventCache.get(intentId) || {};
@@ -363,14 +361,14 @@ function parseEventsFromTransactions(transactions: Transaction[], intentIds: big
       }
 
       // Check for IntentFilled events
-      if (event.type === `${VELOX_ADDRESS}::settlement::IntentFilled`) {
-        const data = event.data as unknown as IntentFilledEvent;
-        const intentId = data.intent_id;
+      if (event.type.includes('::settlement::IntentFilled')) {
+        const data = event.data;
+        const intentId = String(data.intent_id);
 
         if (intentIds.some(id => id.toString() === intentId)) {
           const existing = eventCache.get(intentId) || {};
           existing.settlementTxHash = tx.hash || tx.version;
-          existing.outputAmount = BigInt(data.output_amount);
+          existing.outputAmount = BigInt(String(data.output_amount || '0'));
           eventCache.set(intentId, existing);
         }
       }
@@ -380,16 +378,13 @@ function parseEventsFromTransactions(transactions: Transaction[], intentIds: big
 
 /**
  * Fetch IntentCreated and IntentFilled events for given intent IDs
- * Queries both user transactions (for submissions) and contract transactions (for settlements)
  */
 export async function fetchIntentEvents(intentIds: bigint[], userAddress?: string): Promise<void> {
   if (intentIds.length === 0) return;
 
   try {
-    // Fetch from multiple sources in parallel
     const fetchPromises: Promise<Transaction[]>[] = [];
 
-    // 1. User transactions (for IntentCreated events - submission)
     if (userAddress) {
       fetchPromises.push(
         fetch(`${RPC_URL}/accounts/${userAddress}/transactions?limit=50`)
@@ -398,7 +393,6 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
       );
     }
 
-    // 2. Contract transactions (for IntentFilled events - settlement by solver)
     fetchPromises.push(
       fetch(`${RPC_URL}/accounts/${VELOX_ADDRESS}/transactions?limit=100`)
         .then(res => res.ok ? res.json() : [])
@@ -407,7 +401,6 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
 
     const results = await Promise.all(fetchPromises);
 
-    // Parse events from all transaction sources
     for (const transactions of results) {
       if (Array.isArray(transactions)) {
         parseEventsFromTransactions(transactions, intentIds);
@@ -418,282 +411,15 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
   }
 }
 
-/**
- * Get cached event data for an intent
- */
 export function getIntentEventData(intentId: bigint): IntentEventData | undefined {
   return eventCache.get(intentId.toString());
 }
 
-/**
- * Clear the event cache (useful for refresh)
- */
 export function clearEventCache(): void {
   eventCache.clear();
 }
 
-// ============ Scheduled Intent Functions (DCA/TWAP) ============
-
-export interface ScheduledIntentInfo {
-  nextExecution: number;
-  chunksExecuted: number;
-  totalChunks: number;
-  isTwap: boolean;
-  isReady: boolean;
-  isCompleted: boolean;
-}
-
-/**
- * Get scheduled intent info (DCA/TWAP progress)
- */
-export async function getScheduledIntentInfo(intentId: bigint): Promise<ScheduledIntentInfo | null> {
-  try {
-    const [scheduleResult, readyResult, completedResult] = await Promise.all([
-      aptos.view({
-        payload: {
-          function: `${VELOX_ADDRESS}::scheduled::get_scheduled_intent`,
-          typeArguments: [],
-          functionArguments: [VELOX_ADDRESS, intentId.toString()],
-        },
-      }).catch(() => null),
-      aptos.view({
-        payload: {
-          function: `${VELOX_ADDRESS}::scheduled::is_ready_for_execution`,
-          typeArguments: [],
-          functionArguments: [VELOX_ADDRESS, intentId.toString()],
-        },
-      }).catch(() => [false]),
-      aptos.view({
-        payload: {
-          function: `${VELOX_ADDRESS}::scheduled::is_completed`,
-          typeArguments: [],
-          functionArguments: [VELOX_ADDRESS, intentId.toString()],
-        },
-      }).catch(() => [false]),
-    ]);
-
-    if (!scheduleResult) return null;
-
-    const [nextExecution, chunksExecuted, totalChunks, isTwap] = scheduleResult as [string, string, string, boolean];
-
-    return {
-      nextExecution: Number(nextExecution),
-      chunksExecuted: Number(chunksExecuted),
-      totalChunks: Number(totalChunks),
-      isTwap: isTwap === true,
-      isReady: readyResult?.[0] === true,
-      isCompleted: completedResult?.[0] === true,
-    };
-  } catch (error) {
-    console.error('[Velox] Error fetching scheduled intent info:', error);
-    return null;
-  }
-}
-
-/**
- * Get all executable intent IDs (ready for execution now)
- */
-export async function getExecutableIntents(): Promise<bigint[]> {
-  try {
-    const result = await aptos.view({
-      payload: {
-        function: `${VELOX_ADDRESS}::scheduled::get_executable_intents`,
-        typeArguments: [],
-        functionArguments: [VELOX_ADDRESS],
-      },
-    });
-
-    if (!result || !result[0]) return [];
-    const ids = result[0] as string[];
-    return ids.map((id) => BigInt(id));
-  } catch (error) {
-    console.error('[Velox] Error fetching executable intents:', error);
-    return [];
-  }
-}
-
-// ============ Period/Chunk Fill Event Fetching ============
-
-interface PeriodFillInfo {
-  txHash: string;
-  periodNumber: number;
-  inputAmount: bigint;
-  outputAmount: bigint;
-  filledAt: number;
-}
-
-// Cache for period fill transactions
-const periodFillCache: Map<string, PeriodFillInfo[]> = new Map();
-
-/**
- * Fetch DCA period fill or TWAP chunk fill transactions for an intent
- */
-export async function fetchPeriodFillEvents(intentId: bigint): Promise<PeriodFillInfo[]> {
-  const cacheKey = intentId.toString();
-
-  // Return cached if available and recent
-  const cached = periodFillCache.get(cacheKey);
-  if (cached) return cached;
-
-  try {
-    // Fetch transactions from the contract address
-    const response = await fetch(`${RPC_URL}/accounts/${VELOX_ADDRESS}/transactions?limit=200`);
-    if (!response.ok) return [];
-
-    const transactions = await response.json() as Transaction[];
-    const fills: PeriodFillInfo[] = [];
-
-    for (const tx of transactions) {
-      if (!tx.events) continue;
-
-      for (const event of tx.events) {
-        // Check for DCAPeriodFilled events
-        if (event.type === `${VELOX_ADDRESS}::settlement::DCAPeriodFilled`) {
-          const data = event.data as Record<string, unknown>;
-          if (data.intent_id?.toString() === intentId.toString()) {
-            fills.push({
-              txHash: tx.hash || tx.version,
-              periodNumber: Number(data.period_number || 0),
-              inputAmount: BigInt(String(data.period_input || '0')),
-              outputAmount: BigInt(String(data.period_output || '0')),
-              filledAt: Number(data.filled_at || 0),
-            });
-          }
-        }
-
-        // Check for TWAPChunkFilled events
-        if (event.type === `${VELOX_ADDRESS}::settlement::TWAPChunkFilled`) {
-          const data = event.data as Record<string, unknown>;
-          if (data.intent_id?.toString() === intentId.toString()) {
-            fills.push({
-              txHash: tx.hash || tx.version,
-              periodNumber: Number(data.chunk_number || 0),
-              inputAmount: BigInt(String(data.chunk_input || '0')),
-              outputAmount: BigInt(String(data.chunk_output || '0')),
-              filledAt: Number(data.filled_at || 0),
-            });
-          }
-        }
-      }
-    }
-
-    // Sort by period number
-    fills.sort((a, b) => a.periodNumber - b.periodNumber);
-
-    // Cache the result
-    periodFillCache.set(cacheKey, fills);
-
-    return fills;
-  } catch (error) {
-    console.error('[Velox] Error fetching period fill events:', error);
-    return [];
-  }
-}
-
-/**
- * Get period fill transaction hashes for an intent
- */
-export async function getPeriodFillTxHashes(intentId: bigint): Promise<string[]> {
-  const fills = await fetchPeriodFillEvents(intentId);
-  return fills.map(f => f.txHash);
-}
-
-/**
- * Get total output received from all period fills
- */
-export async function getTotalOutputFromFills(intentId: bigint): Promise<bigint> {
-  const fills = await fetchPeriodFillEvents(intentId);
-  return fills.reduce((acc, f) => acc + f.outputAmount, BigInt(0));
-}
-
-/**
- * Clear period fill cache (useful for refresh)
- */
-export function clearPeriodFillCache(): void {
-  periodFillCache.clear();
-}
-
 // ============ Auction Query Functions ============
-
-/**
- * Solution/bid from on-chain auction
- */
-export interface AuctionSolution {
-  intentId: bigint;
-  solver: string;
-  outputAmount: bigint;
-  executionPrice: bigint;
-  expiresAt: number;
-}
-
-/**
- * Get all solutions/bids for a sealed-bid auction from on-chain
- */
-export async function getAuctionSolutions(intentId: bigint): Promise<AuctionSolution[]> {
-  try {
-    const result = await aptos.view({
-      payload: {
-        function: `${VELOX_ADDRESS}::auction::get_solutions`,
-        typeArguments: [],
-        functionArguments: [VELOX_ADDRESS, intentId.toString()],
-      },
-    });
-
-    if (!result || !result[0]) return [];
-
-    const solutions = result[0] as Array<Record<string, unknown>>;
-    return solutions.map((sol) => ({
-      intentId: BigInt(String(sol.intent_id || '0')),
-      solver: String(sol.solver || ''),
-      outputAmount: BigInt(String(sol.output_amount || '0')),
-      executionPrice: BigInt(String(sol.execution_price || '0')),
-      expiresAt: Number(sol.expires_at || 0),
-    }));
-  } catch (error) {
-    // Auction might not exist for this intent
-    console.debug('[Velox] No auction solutions for intent:', intentId.toString());
-    return [];
-  }
-}
-
-/**
- * Get full auction info including winner from on-chain
- */
-export async function getAuctionInfo(intentId: bigint): Promise<{
-  startTime: number;
-  endTime: number;
-  status: string;
-  winner: string | null;
-  solutionCount: number;
-} | null> {
-  try {
-    const result = await aptos.view({
-      payload: {
-        function: `${VELOX_ADDRESS}::auction::get_auction`,
-        typeArguments: [],
-        functionArguments: [VELOX_ADDRESS, intentId.toString()],
-      },
-    });
-
-    if (!result || !result[0]) return null;
-
-    const data = result[0] as Record<string, unknown>;
-    const status = data.status as Record<string, unknown>;
-    const winner = data.winner as { vec: string[] } | undefined;
-    const solutions = data.solutions as unknown[] | undefined;
-
-    return {
-      startTime: Number(data.start_time || 0),
-      endTime: Number(data.end_time || 0),
-      status: String(status?.__variant__ || 'Active'),
-      winner: winner?.vec?.[0] || null,
-      solutionCount: solutions?.length || 0,
-    };
-  } catch (error) {
-    // Auction might not exist
-    return null;
-  }
-}
 
 export interface DutchAuctionInfo {
   intentId: bigint;
@@ -718,130 +444,134 @@ export interface SealedBidAuctionInfo {
 }
 
 /**
- * Get Dutch auction info for an intent
+ * Get current Dutch auction price for an intent
  */
-export async function getDutchAuctionInfo(intentId: bigint): Promise<DutchAuctionInfo | null> {
+export async function getDutchAuctionPrice(intentId: bigint): Promise<bigint> {
   try {
     const result = await aptos.view({
       payload: {
-        function: `${VELOX_ADDRESS}::auction::get_dutch_auction`,
+        function: `${VELOX_ADDRESS}::auction::get_current_dutch_price`,
         typeArguments: [],
         functionArguments: [VELOX_ADDRESS, intentId.toString()],
       },
     });
-
-    if (!result || !result[0]) return null;
-
-    const data = result[0] as Record<string, unknown>;
-
-    const startTime = Number(data.start_time || 0);
-    const startPrice = BigInt(String(data.start_price || '0'));
-    const endPrice = BigInt(String(data.end_price || '0'));
-    const duration = Number(data.duration || 0);
-    const isActive = data.is_active === true;
-    const winner = data.winner ? String((data.winner as { vec: string[] }).vec?.[0] || '') : null;
-    const acceptedPrice = data.accepted_price
-      ? BigInt(String((data.accepted_price as { vec: string[] }).vec?.[0] || '0'))
-      : null;
-
-    // Calculate current price
-    const now = Math.floor(Date.now() / 1000);
-    const elapsed = now - startTime;
-    let currentPrice = startPrice;
-
-    if (elapsed >= duration) {
-      currentPrice = endPrice;
-    } else if (elapsed > 0) {
-      const priceDiff = startPrice - endPrice;
-      const priceDecrease = (priceDiff * BigInt(elapsed)) / BigInt(duration);
-      currentPrice = startPrice - priceDecrease;
-    }
-
-    return {
-      intentId,
-      startTime,
-      startPrice,
-      endPrice,
-      duration,
-      isActive,
-      winner,
-      acceptedPrice,
-      currentPrice,
-    };
-  } catch (error) {
-    console.error('[Velox] Error fetching Dutch auction info:', error);
-    return null;
+    return BigInt(result[0] as string);
+  } catch {
+    return 0n;
   }
 }
 
 /**
- * Get sealed-bid auction info for an intent
+ * Get bids for a sealed-bid auction
  */
-export async function getSealedBidAuctionInfo(intentId: bigint): Promise<SealedBidAuctionInfo | null> {
+export async function getAuctionBids(intentId: bigint): Promise<Bid[]> {
   try {
     const result = await aptos.view({
       payload: {
-        function: `${VELOX_ADDRESS}::auction::get_auction_info`,
+        function: `${VELOX_ADDRESS}::auction::get_bids`,
         typeArguments: [],
         functionArguments: [VELOX_ADDRESS, intentId.toString()],
       },
     });
-
-    if (!result || !result[0]) return null;
-
-    const data = result[0] as Record<string, unknown>;
-
-    return {
-      intentId,
-      startTime: Number(data.start_time || 0),
-      endTime: Number(data.end_time || 0),
-      isActive: data.is_active === true,
-      bidCount: Number(data.bid_count || 0),
-      winner: data.winner ? String((data.winner as { vec: string[] }).vec?.[0] || '') : null,
-      winningBid: data.winning_bid
-        ? BigInt(String((data.winning_bid as { vec: string[] }).vec?.[0] || '0'))
-        : null,
-    };
-  } catch (error) {
-    console.error('[Velox] Error fetching sealed-bid auction info:', error);
-    return null;
+    const rawBids = result[0] as Record<string, unknown>[];
+    return rawBids.map(b => ({
+      solver: String(b.solver || ''),
+      outputAmount: BigInt(String(b.output_amount || '0')),
+      submittedAt: Number(b.submitted_at || 0),
+    }));
+  } catch {
+    return [];
   }
 }
 
 /**
- * Get solver detailed stats
+ * Get auction winner info
  */
+export async function getAuctionWinner(intentId: bigint): Promise<{ hasWinner: boolean; winner: string }> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::auction::get_winner`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+    return {
+      hasWinner: result[0] as boolean,
+      winner: result[1] as string,
+    };
+  } catch {
+    return { hasWinner: false, winner: '' };
+  }
+}
+
+/**
+ * Get time remaining for sealed-bid auction
+ */
+export async function getSealedBidTimeRemaining(intentId: bigint): Promise<number> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::auction::get_sealed_bid_time_remaining`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+    return Number(result[0]);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Get time remaining for Dutch auction
+ */
+export async function getDutchTimeRemaining(intentId: bigint): Promise<number> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::auction::get_dutch_time_remaining`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+    return Number(result[0]);
+  } catch {
+    return 0;
+  }
+}
+
+// ============ Solver Query Functions ============
+
 export async function getSolverStats(solverAddress: string): Promise<{
   stake: bigint;
   volume: bigint;
   reputation: number;
   fills: number;
   failures: number;
-  avgSlippage: number;
   isActive: boolean;
 } | null> {
   try {
     const result = await aptos.view({
       payload: {
-        function: `${VELOX_ADDRESS}::solver_registry::get_solver_stats`,
+        function: `${VELOX_ADDRESS}::solver_registry::get_solver_info`,
         typeArguments: [],
         functionArguments: [VELOX_ADDRESS, solverAddress],
       },
     });
 
-    if (!result || result.length < 7) return null;
+    if (!result || !result[0]) return null;
 
+    const data = result[0] as Record<string, unknown>;
     return {
-      stake: BigInt(String(result[0] || '0')),
-      volume: BigInt(String(result[1] || '0')),
-      reputation: Number(result[2] || 0),
-      fills: Number(result[3] || 0),
-      failures: Number(result[4] || 0),
-      avgSlippage: Number(result[5] || 0),
-      isActive: result[6] === true,
+      stake: BigInt(String(data.stake || '0')),
+      volume: BigInt(String(data.total_volume || '0')),
+      reputation: Number(data.reputation_score || 0),
+      fills: Number(data.successful_fills || 0),
+      failures: Number(data.failed_fills || 0),
+      isActive: data.is_active === true,
     };
-  } catch (error) {
-    console.error('[Velox] Error fetching solver stats:', error);
+  } catch {
     return null;
   }
 }

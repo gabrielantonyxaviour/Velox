@@ -1,0 +1,8 @@
+---
+profiles:
+  velox-fresh:
+    network: Custom
+    private_key: "0x914C51C1C7E8C9C40310F00DD74DBF90741835F9C482EDFCA85214F51AAC9D75"
+    public_key: "0x9C1DB3A0F7A85DEFA950E3DB937B470B8FE39673AE0D4B50426B5543E0A08049"
+    account: 34ca2941f249796ce72ac2c0fc2ccb816936f53cd8aea7ef82bf621735634511
+    rest_url: "https://aptos.testnet.porto.movementlabs.xyz/v1"
