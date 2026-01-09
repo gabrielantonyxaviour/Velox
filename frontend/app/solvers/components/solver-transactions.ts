@@ -1,10 +1,13 @@
 import {
   AccountAuthenticatorEd25519,
+  AccountAuthenticator,
   Ed25519PublicKey,
   Ed25519Signature,
   generateSigningMessageForTransaction,
+  SimpleTransaction,
 } from '@aptos-labs/ts-sdk';
 import { aptos, VELOX_ADDRESS, toHex } from '@/app/lib/aptos';
+import { sponsoredSubmit, sponsoredSubmitNative, isSponsorshipEnabled } from '@/app/lib/shinami';
 
 export interface SignRawHashFunction {
   (params: { address: string; chainType: 'aptos'; hash: `0x${string}` }): Promise<{
@@ -12,6 +15,12 @@ export interface SignRawHashFunction {
   }>;
 }
 
+export type SignTransactionFunction = (args: {
+  transactionOrPayload: SimpleTransaction;
+  asFeePayer?: boolean;
+}) => Promise<{ authenticator: AccountAuthenticator; rawTransaction: Uint8Array }>;
+
+// Fallback: user pays gas (Privy)
 async function signAndSubmitWithPrivy(
   walletAddress: string,
   functionId: `${string}::${string}::${string}`,
@@ -58,6 +67,71 @@ async function signAndSubmitWithPrivy(
   return committedTx.hash;
 }
 
+// Fallback: user pays gas (Native)
+async function signAndSubmitNative(
+  walletAddress: string,
+  functionId: `${string}::${string}::${string}`,
+  args: (string | number | bigint | boolean)[],
+  signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
+): Promise<string> {
+  const response = await signAndSubmitTransaction({
+    sender: walletAddress,
+    data: {
+      function: functionId,
+      functionArguments: args,
+    },
+  });
+
+  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
+  if (!executed.success) {
+    throw new Error('Transaction failed');
+  }
+
+  return response.hash;
+}
+
+// Smart submit with Shinami Gas Station (Privy)
+async function smartSubmitWithPrivy(
+  walletAddress: string,
+  functionId: `${string}::${string}::${string}`,
+  args: (string | number | bigint | boolean)[],
+  publicKeyHex: string,
+  signRawHash: SignRawHashFunction
+): Promise<string> {
+  const sponsorshipAvailable = await isSponsorshipEnabled();
+  if (sponsorshipAvailable) {
+    try {
+      console.log('[Solver] Using Shinami Gas Station (Privy)');
+      return await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
+    } catch (error) {
+      console.warn('[Solver] Sponsored submission failed, falling back:', error);
+    }
+  }
+  console.log('[Solver] Using user-paid gas (Privy)');
+  return signAndSubmitWithPrivy(walletAddress, functionId, args, publicKeyHex, signRawHash);
+}
+
+// Smart submit with Shinami Gas Station (Native)
+async function smartSubmitNative(
+  walletAddress: string,
+  functionId: `${string}::${string}::${string}`,
+  args: (string | number | bigint | boolean)[],
+  signTransaction: SignTransactionFunction,
+  signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
+): Promise<string> {
+  const sponsorshipAvailable = await isSponsorshipEnabled();
+  if (sponsorshipAvailable) {
+    try {
+      console.log('[Solver] Using Shinami Gas Station (Native)');
+      return await sponsoredSubmitNative(walletAddress, functionId, args, signTransaction);
+    } catch (error) {
+      console.warn('[Solver] Sponsored submission failed, falling back:', error);
+    }
+  }
+  console.log('[Solver] Using user-paid gas (Native)');
+  return signAndSubmitNative(walletAddress, functionId, args, signAndSubmitTransaction);
+}
+
 // Register as a solver
 export async function registerSolver(
   walletAddress: string,
@@ -65,7 +139,7 @@ export async function registerSolver(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::solver_registry::register`,
     [VELOX_ADDRESS, stake.toString()],
@@ -77,22 +151,16 @@ export async function registerSolver(
 export async function registerSolverNative(
   walletAddress: string,
   stake: bigint,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::solver_registry::register`,
-      functionArguments: [VELOX_ADDRESS, stake.toString()],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::solver_registry::register`,
+    [VELOX_ADDRESS, stake.toString()],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
 
 // Add stake
@@ -102,7 +170,7 @@ export async function addStake(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::solver_registry::add_stake`,
     [VELOX_ADDRESS, amount.toString()],
@@ -114,22 +182,16 @@ export async function addStake(
 export async function addStakeNative(
   walletAddress: string,
   amount: bigint,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::solver_registry::add_stake`,
-      functionArguments: [VELOX_ADDRESS, amount.toString()],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::solver_registry::add_stake`,
+    [VELOX_ADDRESS, amount.toString()],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
 
 // Deactivate solver
@@ -138,7 +200,7 @@ export async function deactivateSolver(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::solver_registry::deactivate`,
     [VELOX_ADDRESS],
@@ -149,22 +211,16 @@ export async function deactivateSolver(
 
 export async function deactivateSolverNative(
   walletAddress: string,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::solver_registry::deactivate`,
-      functionArguments: [VELOX_ADDRESS],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::solver_registry::deactivate`,
+    [VELOX_ADDRESS],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
 
 // Reactivate solver
@@ -173,7 +229,7 @@ export async function reactivateSolver(
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
-  return signAndSubmitWithPrivy(
+  return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::solver_registry::reactivate`,
     [VELOX_ADDRESS],
@@ -184,20 +240,14 @@ export async function reactivateSolver(
 
 export async function reactivateSolverNative(
   walletAddress: string,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::solver_registry::reactivate`,
-      functionArguments: [VELOX_ADDRESS],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::solver_registry::reactivate`,
+    [VELOX_ADDRESS],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
