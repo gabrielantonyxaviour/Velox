@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Progress } from '@/app/components/ui/progress';
 import { useSolverInfo } from '@/app/hooks/use-solvers';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
+import { getSolverMetadata, type SolverMetadata } from '@/app/lib/solver-metadata';
 import {
   addStake,
   addStakeNative,
@@ -23,7 +24,13 @@ import {
   Power,
   TrendingUp,
   RefreshCw,
+  Globe,
+  Twitter,
+  MessageCircle,
+  Wallet,
+  ExternalLink,
 } from 'lucide-react';
+import Image from 'next/image';
 
 interface MySolverCardProps {
   address: string;
@@ -34,10 +41,18 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
   const { isPrivy, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
   const { solver, isLoading, refetch } = useSolverInfo(address);
 
+  const [metadata, setMetadata] = useState<SolverMetadata | null>(null);
   const [additionalStake, setAdditionalStake] = useState('');
   const [isAddingStake, setIsAddingStake] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (address) {
+      const storedMetadata = getSolverMetadata(address);
+      setMetadata(storedMetadata);
+    }
+  }, [address]);
 
   if (isLoading) {
     return (
@@ -49,9 +64,7 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
     );
   }
 
-  if (!solver) {
-    return null;
-  }
+  if (!solver) return null;
 
   const successRate =
     solver.totalIntentsSolved > 0
@@ -118,10 +131,41 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
     }
   };
 
+  const truncateAddress = (addr: string) =>
+    `${addr.slice(0, 8)}...${addr.slice(-6)}`;
+
   return (
     <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">My Solver Status</h2>
+      {/* Header with Profile */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          {metadata?.imageUrl ? (
+            <div className="relative w-12 h-12 rounded-full overflow-hidden">
+              <Image
+                src={metadata.imageUrl}
+                alt={metadata.name || 'Solver'}
+                fill
+                className="object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <span className="text-lg font-bold text-muted-foreground">
+                {(metadata?.name || 'S')[0].toUpperCase()}
+              </span>
+            </div>
+          )}
+          <div>
+            <h2 className="text-lg font-semibold">
+              {metadata?.name || 'My Solver'}
+            </h2>
+            {metadata?.description && (
+              <p className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">
+                {metadata.description}
+              </p>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           {solver.isActive ? (
             <span className="flex items-center gap-1 text-sm text-primary">
@@ -139,6 +183,62 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
           </Button>
         </div>
       </div>
+
+      {/* Operator Wallet Info */}
+      {metadata?.operatorWallet && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4 bg-muted/30 rounded px-3 py-2">
+          <Wallet className="w-4 h-4" />
+          <span>Operator:</span>
+          <code className="text-xs">{truncateAddress(metadata.operatorWallet)}</code>
+        </div>
+      )}
+
+      {/* Social Links */}
+      {(metadata?.website || metadata?.twitter || metadata?.discord) && (
+        <div className="flex items-center gap-3 mb-4">
+          {metadata.website && (
+            <a
+              href={metadata.website.startsWith('http') ? metadata.website : `https://${metadata.website}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Globe className="w-4 h-4" />
+            </a>
+          )}
+          {metadata.twitter && (
+            <a
+              href={`https://twitter.com/${metadata.twitter.replace('@', '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Twitter className="w-4 h-4" />
+            </a>
+          )}
+          {metadata.discord && (
+            <a
+              href={metadata.discord.startsWith('http') ? metadata.discord : `https://discord.gg/${metadata.discord}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-primary transition-colors"
+            >
+              <MessageCircle className="w-4 h-4" />
+            </a>
+          )}
+          {metadata.metadataUri && (
+            <a
+              href={metadata.metadataUri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-primary transition-colors ml-auto"
+              title="View metadata on IPFS"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Reputation Progress */}
       <div className="mb-6">
