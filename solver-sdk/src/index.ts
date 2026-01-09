@@ -1,6 +1,9 @@
 // Main exports
 export { VeloxSolver, VeloxSolverConfig } from './VeloxSolver';
 
+// Configuration
+export { SolverConfig, SolverConfigOptions } from './config';
+
 // Types
 export * from './types';
 
