@@ -5,6 +5,7 @@ import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Progress } from '@/app/components/ui/progress';
+import { SimpleConfirmDialog, SimpleTransactionDetails } from '@/app/components/ui/simple-confirm-dialog';
 import { useSolverInfo } from '@/app/hooks/use-solvers';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
 import { getSolverMetadata, type SolverMetadata } from '@/app/lib/solver-metadata';
@@ -47,6 +48,11 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
   const [isToggling, setIsToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Confirmation dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDetails, setConfirmDetails] = useState<SimpleTransactionDetails | null>(null);
+  const [pendingAction, setPendingAction] = useState<'add_stake' | 'toggle' | null>(null);
+
   useEffect(() => {
     if (address) {
       const storedMetadata = getSolverMetadata(address);
@@ -78,57 +84,97 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
     return num.toFixed(2);
   };
 
-  const handleAddStake = async () => {
+  const handleAddStakeClick = () => {
     if (!additionalStake || parseFloat(additionalStake) <= 0) return;
 
-    setIsAddingStake(true);
-    setError(null);
-
-    try {
-      const amount = BigInt(Math.floor(parseFloat(additionalStake) * 1e8));
-
-      if (isPrivy && signRawHash && publicKeyHex) {
-        await addStake(address, amount, signRawHash, publicKeyHex);
-      } else if (signTransaction && signAndSubmitTransaction) {
-        await addStakeNative(address, amount, signTransaction, signAndSubmitTransaction);
-      }
-
-      setAdditionalStake('');
-      refetch();
-      onRefresh?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add stake');
-    } finally {
-      setIsAddingStake(false);
-    }
+    setConfirmDetails({
+      title: 'Add Stake',
+      description: 'Confirm adding stake to your solver.',
+      items: [
+        { label: 'Amount', value: `${additionalStake} MOVE` },
+        { label: 'Current Stake', value: `${(Number(solver?.stake || 0) / 1e8).toFixed(2)} MOVE` },
+        { label: 'New Total', value: `${((Number(solver?.stake || 0) / 1e8) + parseFloat(additionalStake)).toFixed(2)} MOVE` },
+      ],
+    });
+    setPendingAction('add_stake');
+    setConfirmOpen(true);
   };
 
-  const handleToggleActive = async () => {
-    setIsToggling(true);
+  const handleToggleClick = () => {
+    if (!solver) return;
+
+    const action = solver.isActive ? 'Deactivate' : 'Reactivate';
+    setConfirmDetails({
+      title: `${action} Solver`,
+      description: `Confirm ${action.toLowerCase()}ing your solver.`,
+      items: [
+        { label: 'Current Status', value: solver.isActive ? 'Active' : 'Inactive' },
+        { label: 'New Status', value: solver.isActive ? 'Inactive' : 'Active' },
+      ],
+      warningMessage: solver.isActive
+        ? 'Your solver will stop receiving new intents.'
+        : undefined,
+    });
+    setPendingAction('toggle');
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = async () => {
     setError(null);
 
-    try {
-      if (solver.isActive) {
-        if (isPrivy && signRawHash && publicKeyHex) {
-          await deactivateSolver(address, signRawHash, publicKeyHex);
-        } else if (signTransaction && signAndSubmitTransaction) {
-          await deactivateSolverNative(address, signTransaction, signAndSubmitTransaction);
-        }
-      } else {
-        if (isPrivy && signRawHash && publicKeyHex) {
-          await reactivateSolver(address, signRawHash, publicKeyHex);
-        } else if (signTransaction && signAndSubmitTransaction) {
-          await reactivateSolverNative(address, signTransaction, signAndSubmitTransaction);
-        }
-      }
+    if (pendingAction === 'add_stake') {
+      setIsAddingStake(true);
+      try {
+        const amount = BigInt(Math.floor(parseFloat(additionalStake) * 1e8));
 
-      refetch();
-      onRefresh?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to toggle status');
-    } finally {
-      setIsToggling(false);
+        if (isPrivy && signRawHash && publicKeyHex) {
+          await addStake(address, amount, signRawHash, publicKeyHex);
+        } else if (signTransaction && signAndSubmitTransaction) {
+          await addStakeNative(address, amount, signTransaction, signAndSubmitTransaction);
+        }
+
+        setAdditionalStake('');
+        refetch();
+        onRefresh?.();
+        setConfirmOpen(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add stake');
+      } finally {
+        setIsAddingStake(false);
+      }
+    } else if (pendingAction === 'toggle' && solver) {
+      setIsToggling(true);
+      try {
+        if (solver.isActive) {
+          if (isPrivy && signRawHash && publicKeyHex) {
+            await deactivateSolver(address, signRawHash, publicKeyHex);
+          } else if (signTransaction && signAndSubmitTransaction) {
+            await deactivateSolverNative(address, signTransaction, signAndSubmitTransaction);
+          }
+        } else {
+          if (isPrivy && signRawHash && publicKeyHex) {
+            await reactivateSolver(address, signRawHash, publicKeyHex);
+          } else if (signTransaction && signAndSubmitTransaction) {
+            await reactivateSolverNative(address, signTransaction, signAndSubmitTransaction);
+          }
+        }
+
+        refetch();
+        onRefresh?.();
+        setConfirmOpen(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to toggle status');
+      } finally {
+        setIsToggling(false);
+      }
     }
+
+    setPendingAction(null);
+  };
+
+  const handleCancelConfirm = () => {
+    setConfirmOpen(false);
+    setPendingAction(null);
   };
 
   const truncateAddress = (addr: string) =>
@@ -307,7 +353,7 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
             className="flex-1"
           />
           <Button
-            onClick={handleAddStake}
+            onClick={handleAddStakeClick}
             disabled={isAddingStake || !additionalStake || parseFloat(additionalStake) <= 0}
           >
             {isAddingStake ? (
@@ -323,7 +369,7 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
 
         <Button
           variant={solver.isActive ? 'destructive' : 'default'}
-          onClick={handleToggleActive}
+          onClick={handleToggleClick}
           disabled={isToggling}
           className="w-full"
         >
@@ -335,6 +381,17 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
           {solver.isActive ? 'Deactivate Solver' : 'Reactivate Solver'}
         </Button>
       </div>
+
+      <SimpleConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        details={confirmDetails}
+        onConfirm={handleConfirm}
+        onCancel={handleCancelConfirm}
+        isLoading={isAddingStake || isToggling}
+        confirmText={pendingAction === 'add_stake' ? 'Add Stake' : (solver.isActive ? 'Deactivate' : 'Reactivate')}
+        variant={pendingAction === 'toggle' && solver.isActive ? 'destructive' : 'default'}
+      />
     </Card>
   );
 }
