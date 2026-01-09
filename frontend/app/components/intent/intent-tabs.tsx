@@ -14,7 +14,7 @@ interface IntentTabsProps {
 
 export function IntentTabs({ onSuccess, onError }: IntentTabsProps) {
   return (
-    <div className="w-full max-w-lg mx-auto">
+    <div className="w-full">
       <Tabs defaultValue="swap" className="w-full">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="swap">Swap</TabsTrigger>

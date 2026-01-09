@@ -184,7 +184,7 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
   const availableOutputTokens = TOKEN_LIST.filter((t) => t.address !== inputToken?.address);
 
   return (
-    <Card className="w-full max-w-md mx-auto p-6 bg-card border-border">
+    <Card className="w-full p-6 bg-card border-border">
       <h2 className="text-xl font-semibold mb-6">TWAP Order</h2>
 
       <div className="space-y-4">
