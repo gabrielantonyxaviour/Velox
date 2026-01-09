@@ -292,7 +292,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
         {auctionType === AUCTION_TYPE.SEALED_BID ? (
           <Gavel className="w-5 h-5 text-primary" />
         ) : (
-          <Clock className="w-5 h-5 text-amber-400" />
+          <Clock className="w-5 h-5 text-primary" />
         )}
         <h2 className="text-xl font-semibold">
           {auctionType === AUCTION_TYPE.SEALED_BID ? 'Sealed-Bid' : 'Dutch'} Auction Swap
@@ -304,12 +304,8 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
         <AuctionTypeSelector value={auctionType} onChange={setAuctionType} />
 
         {/* Info Banner */}
-        <div className={`border rounded-lg p-3 ${
-          auctionType === AUCTION_TYPE.SEALED_BID
-            ? 'bg-primary/10 border-primary/20'
-            : 'bg-amber-500/10 border-amber-500/20'
-        }`}>
-          <p className={`text-sm ${auctionType === AUCTION_TYPE.SEALED_BID ? 'text-primary' : 'text-amber-400'}`}>
+        <div className="border rounded-lg p-3 bg-primary/10 border-primary/20">
+          <p className="text-sm text-primary">
             {auctionType === AUCTION_TYPE.SEALED_BID
               ? 'Solvers submit sealed bids. Best offer wins after auction ends.'
               : 'Price drops from start to min. First solver to accept wins.'}
@@ -465,11 +461,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
           type="button"
           onClick={handleSubmit}
           disabled={isLoading || !isConnected}
-          className={`w-full h-12 text-base font-medium ${
-            auctionType === AUCTION_TYPE.SEALED_BID
-              ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
-              : 'bg-amber-600 hover:bg-amber-700 text-white'
-          }`}
+          className="w-full h-12 text-base font-medium bg-primary hover:bg-primary/90 text-primary-foreground"
         >
           {isLoading ? (
             <>

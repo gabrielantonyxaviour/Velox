@@ -71,9 +71,9 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
   }, [isActive, auctionEndTime]);
 
   const getMedalIcon = (index: number) => {
-    if (index === 0) return <Medal className="h-4 w-4 text-yellow-500" />;
-    if (index === 1) return <Medal className="h-4 w-4 text-gray-400" />;
-    if (index === 2) return <Medal className="h-4 w-4 text-amber-700" />;
+    if (index === 0) return <Medal className="h-4 w-4 text-primary" />;
+    if (index === 1) return <Medal className="h-4 w-4 text-primary/60" />;
+    if (index === 2) return <Medal className="h-4 w-4 text-primary/40" />;
     return <span className="w-4 text-center text-xs text-muted-foreground">#{index + 1}</span>;
   };
 
