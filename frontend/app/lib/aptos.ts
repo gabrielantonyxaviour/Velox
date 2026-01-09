@@ -34,7 +34,7 @@ export const aptos = new Aptos(
 );
 
 // Velox contract address on Movement testnet
-export const VELOX_ADDRESS = '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
+export const VELOX_ADDRESS = '0x34ca2941f249796ce72ac2c0fc2ccb816936f53cd8aea7ef82bf621735634511';
 
 // Utility to convert Uint8Array to hex string
 export const toHex = (buffer: Uint8Array): string => {

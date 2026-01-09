@@ -14,7 +14,7 @@ interface ActiveIntentsProps {
 
 export function ActiveIntents({ intents, loading, onCancel, cancellingId }: ActiveIntentsProps) {
   const activeIntents = intents.filter(
-    (intent) => intent.status === 'pending' || intent.status === 'partially_filled'
+    (intent) => intent.status === 'active'
   );
 
   // Only show when there are actual active intents

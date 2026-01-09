@@ -1,10 +1,11 @@
 'use client';
 
-import { IntentRecord } from '@/app/lib/velox/types';
+import { IntentRecord, getFillPercentage, isPartiallyFilled } from '@/app/lib/velox/types';
 import { IntentStatusBadge } from './intent-status-badge';
 import { Button } from '../ui/button';
 import { TOKEN_LIST } from '@/app/constants/tokens';
 import { X, Target, Loader2 } from 'lucide-react';
+import { Progress } from '../ui/progress';
 
 interface LimitOrderIntentRowProps {
   intent: IntentRecord;
@@ -51,19 +52,21 @@ function getTokenDecimals(address: string): number {
 }
 
 export function LimitOrderIntentRow({ intent, onCancel, onClick, isCancelling }: LimitOrderIntentRowProps) {
-  const inputSymbol = getTokenSymbol(intent.inputToken);
-  const outputSymbol = getTokenSymbol(intent.outputToken);
-  const inputDecimals = getTokenDecimals(intent.inputToken);
-  const outputDecimals = getTokenDecimals(intent.outputToken);
+  const { intent: limitIntent } = intent;
+  const inputSymbol = getTokenSymbol(limitIntent.inputToken);
+  const outputSymbol = getTokenSymbol(limitIntent.outputToken);
+  const inputDecimals = getTokenDecimals(limitIntent.inputToken);
+  const outputDecimals = getTokenDecimals(limitIntent.outputToken);
 
-  const isPending = intent.status === 'pending' || intent.status === 'partially_filled';
-  const isFilled = intent.status === 'filled';
+  const isActive = intent.status === 'active';
+  const hasPartialFill = isPartiallyFilled(intent);
+  const fillPercent = getFillPercentage(intent);
 
-  const formattedOutput = intent.outputAmount
-    ? formatAmount(intent.outputAmount, outputDecimals)
+  const formattedOutput = intent.totalOutputReceived > 0n
+    ? formatAmount(intent.totalOutputReceived, outputDecimals)
     : null;
 
-  const limitPrice = intent.limitPrice ?? BigInt(0);
+  const limitPrice = limitIntent.limitPrice ?? 0n;
 
   return (
     <div
@@ -72,21 +75,32 @@ export function LimitOrderIntentRow({ intent, onCancel, onClick, isCancelling }:
     >
       <div className="flex items-center gap-3">
         <Target className="h-4 w-4 text-primary" />
-        <div>
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground uppercase">Limit</span>
             <span className="text-xs text-primary">@ {formatPrice(limitPrice)}</span>
           </div>
           <p className="text-sm font-medium">
-            {formatAmount(intent.amountIn, inputDecimals)} {inputSymbol} → {formattedOutput ? `${formattedOutput} ` : ''}{outputSymbol}
+            {formatAmount(limitIntent.amountIn ?? 0n, inputDecimals)} {inputSymbol} → {formattedOutput ? `${formattedOutput} ` : ''}{outputSymbol}
           </p>
+          {hasPartialFill && (
+            <div className="flex items-center gap-2">
+              <Progress value={fillPercent} className="w-16 h-1" />
+              <span className="text-xs text-muted-foreground">{fillPercent}% filled</span>
+            </div>
+          )}
+          {intent.fills.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {intent.fills.length} fill{intent.fills.length > 1 ? 's' : ''}
+            </span>
+          )}
         </div>
       </div>
 
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">{formatTime(intent.createdAt)}</span>
-        <IntentStatusBadge status={intent.status} />
-        {isPending && onCancel && (
+        <IntentStatusBadge status={intent.status} record={intent} />
+        {isActive && onCancel && (
           <Button
             variant="ghost"
             size="sm"

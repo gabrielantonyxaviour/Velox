@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { IntentRecord } from '@/app/lib/velox/types';
-import { getScheduledIntentInfo, ScheduledIntentInfo } from '@/app/lib/velox/queries';
+import { IntentRecord, getRemainingChunks, isNextChunkReady, getTimeUntilNextChunk, getIntentTotalAmount } from '@/app/lib/velox/types';
 import { IntentStatusBadge } from './intent-status-badge';
 import { Button } from '../ui/button';
 import { TOKEN_LIST } from '@/app/constants/tokens';
-import { X, Calendar, Loader2 } from 'lucide-react';
+import { X, Calendar, Loader2, Clock } from 'lucide-react';
+import { Progress } from '../ui/progress';
 
 interface DCAIntentRowProps {
   intent: IntentRecord;
@@ -38,6 +37,12 @@ function formatTime(timestamp: number): string {
   return `${diffDays}d ago`;
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
 function getTokenSymbol(address: string): string {
   const token = TOKEN_LIST.find((t) => t.address === address);
   return token?.symbol || address.slice(0, 6) + '...';
@@ -49,28 +54,24 @@ function getTokenDecimals(address: string): number {
 }
 
 export function DCAIntentRow({ intent, onCancel, onClick, isCancelling }: DCAIntentRowProps) {
-  const [scheduledInfo, setScheduledInfo] = useState<ScheduledIntentInfo | null>(null);
+  const { intent: dcaIntent } = intent;
+  const inputSymbol = getTokenSymbol(dcaIntent.inputToken);
+  const outputSymbol = getTokenSymbol(dcaIntent.outputToken);
+  const inputDecimals = getTokenDecimals(dcaIntent.inputToken);
+  const outputDecimals = getTokenDecimals(dcaIntent.outputToken);
 
-  const inputSymbol = getTokenSymbol(intent.inputToken);
-  const outputSymbol = getTokenSymbol(intent.outputToken);
-  const inputDecimals = getTokenDecimals(intent.inputToken);
+  const isActive = intent.status === 'active';
+  const totalPeriods = dcaIntent.totalPeriods ?? 0;
+  const periodsExecuted = intent.chunksExecuted; // DCA uses chunksExecuted for periods
+  const isCompleted = totalPeriods > 0 && periodsExecuted >= totalPeriods;
+  const periodReady = isNextChunkReady(intent);
+  const timeUntilNext = getTimeUntilNextChunk(intent);
+  const progressPercent = totalPeriods > 0 ? (periodsExecuted / totalPeriods) * 100 : 0;
 
-  const isPending = intent.status === 'pending' || intent.status === 'partially_filled';
-
-  const fetchData = useCallback(async () => {
-    const info = await getScheduledIntentInfo(intent.id);
-    setScheduledInfo(info);
-  }, [intent.id]);
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
-
-  const periodsExecuted = scheduledInfo?.chunksExecuted ?? intent.periodsExecuted ?? 0;
-  const totalPeriods = scheduledInfo?.totalChunks ?? intent.totalPeriods ?? 0;
-  const isCompleted = scheduledInfo?.isCompleted || (totalPeriods > 0 && periodsExecuted >= totalPeriods);
+  const totalAmount = getIntentTotalAmount(dcaIntent);
+  const formattedOutput = intent.totalOutputReceived > 0n
+    ? formatAmount(intent.totalOutputReceived, outputDecimals)
+    : null;
 
   return (
     <div
@@ -79,21 +80,39 @@ export function DCAIntentRow({ intent, onCancel, onClick, isCancelling }: DCAInt
     >
       <div className="flex items-center gap-3">
         <Calendar className="h-4 w-4 text-primary" />
-        <div>
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground uppercase">DCA</span>
             <span className="text-xs text-primary">{periodsExecuted}/{totalPeriods}</span>
+            {periodReady && isActive && (
+              <span className="text-xs text-green-400">Ready</span>
+            )}
+            {!periodReady && isActive && timeUntilNext > 0 && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {formatDuration(timeUntilNext)}
+              </span>
+            )}
           </div>
           <p className="text-sm font-medium">
-            {formatAmount(intent.amountIn, inputDecimals)} {inputSymbol} → {outputSymbol}
+            {formatAmount(totalAmount, inputDecimals)} {inputSymbol} → {formattedOutput ? `${formattedOutput} ` : ''}{outputSymbol}
           </p>
+          <p className="text-xs text-muted-foreground">
+            {formatAmount(dcaIntent.amountPerPeriod ?? 0n, inputDecimals)} per period
+          </p>
+          {periodsExecuted > 0 && periodsExecuted < totalPeriods && (
+            <div className="flex items-center gap-2">
+              <Progress value={progressPercent} className="w-16 h-1" />
+              <span className="text-xs text-muted-foreground">{Math.round(progressPercent)}%</span>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">{formatTime(intent.createdAt)}</span>
-        <IntentStatusBadge status={isCompleted ? 'filled' : intent.status} />
-        {isPending && !isCompleted && onCancel && (
+        <IntentStatusBadge status={isCompleted ? 'filled' : intent.status} record={intent} />
+        {isActive && !isCompleted && onCancel && (
           <Button
             variant="ghost"
             size="sm"

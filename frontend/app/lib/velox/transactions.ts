@@ -7,11 +7,13 @@ import {
   SimpleTransaction,
 } from '@aptos-labs/ts-sdk';
 import { aptos, VELOX_ADDRESS, toHex } from '../aptos';
-import { DutchAuction } from './types';
 import { sponsoredSubmit, sponsoredSubmitNative, isSponsorshipEnabled } from '../shinami';
 import { storeAuctionIntent } from './auction-storage';
 
-// Helper to extract intent ID from transaction events
+// ============================================================
+// Helper: Extract intent ID from transaction events
+// ============================================================
+
 async function extractIntentIdFromTx(txHash: string): Promise<bigint | null> {
   try {
     const tx = await aptos.getTransactionByHash({ transactionHash: txHash });
@@ -31,6 +33,10 @@ async function extractIntentIdFromTx(txHash: string): Promise<bigint | null> {
   return null;
 }
 
+// ============================================================
+// Type Definitions
+// ============================================================
+
 export interface SignRawHashFunction {
   (params: { address: string; chainType: 'aptos'; hash: `0x${string}` }): Promise<{
     signature: string;
@@ -42,7 +48,10 @@ export type SignTransactionFunction = (args: {
   asFeePayer?: boolean;
 }) => Promise<{ authenticator: AccountAuthenticator; rawTransaction: Uint8Array }>;
 
-// Helper to build and sign transactions with Privy (user pays gas - fallback)
+// ============================================================
+// Smart Transaction Submission Helpers
+// ============================================================
+
 async function signAndSubmitWithPrivy(
   walletAddress: string,
   functionId: `${string}::${string}::${string}`,
@@ -89,7 +98,6 @@ async function signAndSubmitWithPrivy(
   return committedTx.hash;
 }
 
-// Helper to sign and submit with native wallet (user pays gas - fallback)
 async function signAndSubmitNative(
   walletAddress: string,
   functionId: `${string}::${string}::${string}`,
@@ -112,10 +120,6 @@ async function signAndSubmitNative(
   return response.hash;
 }
 
-/**
- * Smart transaction submission for Privy - uses Shinami Gas Station if available,
- * otherwise falls back to user-paid gas
- */
 async function smartSubmitWithPrivy(
   walletAddress: string,
   functionId: `${string}::${string}::${string}`,
@@ -123,7 +127,6 @@ async function smartSubmitWithPrivy(
   publicKeyHex: string,
   signRawHash: SignRawHashFunction
 ): Promise<string> {
-  // Try sponsored submission first if enabled
   const sponsorshipAvailable = await isSponsorshipEnabled();
   if (sponsorshipAvailable) {
     try {
@@ -131,19 +134,13 @@ async function smartSubmitWithPrivy(
       return await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
     } catch (error) {
       console.warn('[Velox] Sponsored submission failed, falling back to user-paid:', error);
-      // Fall through to user-paid submission
     }
   }
 
-  // Fallback to user-paid gas
   console.log('[Velox] Using user-paid gas transaction (Privy)');
   return signAndSubmitWithPrivy(walletAddress, functionId, args, publicKeyHex, signRawHash);
 }
 
-/**
- * Smart transaction submission for native wallets - uses Shinami Gas Station if available,
- * otherwise falls back to user-paid gas
- */
 async function smartSubmitNative(
   walletAddress: string,
   functionId: `${string}::${string}::${string}`,
@@ -151,7 +148,6 @@ async function smartSubmitNative(
   signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  // Try sponsored submission first if enabled
   const sponsorshipAvailable = await isSponsorshipEnabled();
   if (sponsorshipAvailable) {
     try {
@@ -159,16 +155,16 @@ async function smartSubmitNative(
       return await sponsoredSubmitNative(walletAddress, functionId, args, signTransaction);
     } catch (error) {
       console.warn('[Velox] Sponsored submission failed, falling back to user-paid:', error);
-      // Fall through to user-paid submission
     }
   }
 
-  // Fallback to user-paid gas
   console.log('[Velox] Using user-paid gas transaction (Native)');
   return signAndSubmitNative(walletAddress, functionId, args, signAndSubmitTransaction);
 }
 
-// ============ Swap Intent ============
+// ============================================================
+// Swap Intent
+// ============================================================
 
 export async function submitSwapIntent(
   walletAddress: string,
@@ -208,7 +204,9 @@ export async function submitSwapIntentNative(
   );
 }
 
-// ============ Limit Order Intent ============
+// ============================================================
+// Limit Order Intent (partial fills always allowed, max 5)
+// ============================================================
 
 export async function submitLimitOrderIntent(
   walletAddress: string,
@@ -217,22 +215,13 @@ export async function submitLimitOrderIntent(
   amountIn: bigint,
   limitPrice: bigint,
   expiry: number,
-  partialFillAllowed: boolean,
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
   return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_limit_order`,
-    [
-      VELOX_ADDRESS,
-      inputToken,
-      outputToken,
-      amountIn.toString(),
-      limitPrice.toString(),
-      expiry,
-      partialFillAllowed,
-    ],
+    [VELOX_ADDRESS, inputToken, outputToken, amountIn.toString(), limitPrice.toString(), expiry],
     publicKeyHex,
     signRawHash
   );
@@ -245,28 +234,21 @@ export async function submitLimitOrderIntentNative(
   amountIn: bigint,
   limitPrice: bigint,
   expiry: number,
-  partialFillAllowed: boolean,
   signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
   return smartSubmitNative(
     walletAddress,
     `${VELOX_ADDRESS}::submission::submit_limit_order`,
-    [
-      VELOX_ADDRESS,
-      inputToken,
-      outputToken,
-      amountIn.toString(),
-      limitPrice.toString(),
-      expiry,
-      partialFillAllowed,
-    ],
+    [VELOX_ADDRESS, inputToken, outputToken, amountIn.toString(), limitPrice.toString(), expiry],
     signTransaction,
     signAndSubmitTransaction
   );
 }
 
-// ============ TWAP Intent ============
+// ============================================================
+// TWAP Intent
+// ============================================================
 
 export async function submitTWAPIntent(
   walletAddress: string,
@@ -285,7 +267,6 @@ export async function submitTWAPIntent(
     `${VELOX_ADDRESS}::submission::submit_twap`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
       inputToken,
       outputToken,
       totalAmount.toString(),
@@ -316,7 +297,6 @@ export async function submitTWAPIntentNative(
     `${VELOX_ADDRESS}::submission::submit_twap`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
       inputToken,
       outputToken,
       totalAmount.toString(),
@@ -330,7 +310,9 @@ export async function submitTWAPIntentNative(
   );
 }
 
-// ============ DCA Intent ============
+// ============================================================
+// DCA Intent (starts immediately)
+// ============================================================
 
 export async function submitDCAIntent(
   walletAddress: string,
@@ -347,7 +329,6 @@ export async function submitDCAIntent(
     `${VELOX_ADDRESS}::submission::submit_dca`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
       inputToken,
       outputToken,
       amountPerPeriod.toString(),
@@ -374,7 +355,6 @@ export async function submitDCAIntentNative(
     `${VELOX_ADDRESS}::submission::submit_dca`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
       inputToken,
       outputToken,
       amountPerPeriod.toString(),
@@ -386,9 +366,11 @@ export async function submitDCAIntentNative(
   );
 }
 
-// ============ Swap with Auction Intent ============
+// ============================================================
+// Swap with Sealed-Bid Auction
+// ============================================================
 
-export async function submitSwapWithAuction(
+export async function submitSwapWithSealedBid(
   walletAddress: string,
   inputToken: string,
   outputToken: string,
@@ -401,10 +383,9 @@ export async function submitSwapWithAuction(
 ): Promise<string> {
   const txHash = await smartSubmitWithPrivy(
     walletAddress,
-    `${VELOX_ADDRESS}::submission::submit_swap_with_auction`,
+    `${VELOX_ADDRESS}::submission::submit_swap_sealed_bid`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // auction_state_addr (same as registry for MVP)
       inputToken,
       outputToken,
       amountIn.toString(),
@@ -416,7 +397,6 @@ export async function submitSwapWithAuction(
     signRawHash
   );
 
-  // Extract intent ID and store auction info
   const intentId = await extractIntentIdFromTx(txHash);
   if (intentId !== null) {
     storeAuctionIntent(intentId, 'sealed-bid', { duration: auctionDuration });
@@ -425,7 +405,7 @@ export async function submitSwapWithAuction(
   return txHash;
 }
 
-export async function submitSwapWithAuctionNative(
+export async function submitSwapWithSealedBidNative(
   walletAddress: string,
   inputToken: string,
   outputToken: string,
@@ -438,10 +418,9 @@ export async function submitSwapWithAuctionNative(
 ): Promise<string> {
   const txHash = await smartSubmitNative(
     walletAddress,
-    `${VELOX_ADDRESS}::submission::submit_swap_with_auction`,
+    `${VELOX_ADDRESS}::submission::submit_swap_sealed_bid`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // auction_state_addr (same as registry for MVP)
       inputToken,
       outputToken,
       amountIn.toString(),
@@ -453,7 +432,6 @@ export async function submitSwapWithAuctionNative(
     signAndSubmitTransaction
   );
 
-  // Extract intent ID and store auction info
   const intentId = await extractIntentIdFromTx(txHash);
   if (intentId !== null) {
     storeAuctionIntent(intentId, 'sealed-bid', { duration: auctionDuration });
@@ -462,7 +440,13 @@ export async function submitSwapWithAuctionNative(
   return txHash;
 }
 
-// ============ Swap with Dutch Auction Intent ============
+// Backwards compatibility aliases
+export const submitSwapWithAuction = submitSwapWithSealedBid;
+export const submitSwapWithAuctionNative = submitSwapWithSealedBidNative;
+
+// ============================================================
+// Swap with Dutch Auction
+// ============================================================
 
 export async function submitSwapWithDutchAuction(
   walletAddress: string,
@@ -471,30 +455,26 @@ export async function submitSwapWithDutchAuction(
   amountIn: bigint,
   minAmountOut: bigint,
   startPrice: bigint,
-  deadline: number,
   auctionDuration: number,
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
   const txHash = await smartSubmitWithPrivy(
     walletAddress,
-    `${VELOX_ADDRESS}::submission::submit_swap_with_dutch_auction`,
+    `${VELOX_ADDRESS}::submission::submit_swap_dutch`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // auction_state_addr
       inputToken,
       outputToken,
       amountIn.toString(),
       minAmountOut.toString(),
       startPrice.toString(),
-      deadline,
       auctionDuration,
     ],
     publicKeyHex,
     signRawHash
   );
 
-  // Extract intent ID and store auction info
   const intentId = await extractIntentIdFromTx(txHash);
   if (intentId !== null) {
     storeAuctionIntent(intentId, 'dutch', {
@@ -514,30 +494,26 @@ export async function submitSwapWithDutchAuctionNative(
   amountIn: bigint,
   minAmountOut: bigint,
   startPrice: bigint,
-  deadline: number,
   auctionDuration: number,
   signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
   const txHash = await smartSubmitNative(
     walletAddress,
-    `${VELOX_ADDRESS}::submission::submit_swap_with_dutch_auction`,
+    `${VELOX_ADDRESS}::submission::submit_swap_dutch`,
     [
       VELOX_ADDRESS,
-      VELOX_ADDRESS, // auction_state_addr
       inputToken,
       outputToken,
       amountIn.toString(),
       minAmountOut.toString(),
       startPrice.toString(),
-      deadline,
       auctionDuration,
     ],
     signTransaction,
     signAndSubmitTransaction
   );
 
-  // Extract intent ID and store auction info
   const intentId = await extractIntentIdFromTx(txHash);
   if (intentId !== null) {
     storeAuctionIntent(intentId, 'dutch', {
@@ -550,46 +526,9 @@ export async function submitSwapWithDutchAuctionNative(
   return txHash;
 }
 
-// ============ Dutch Auction View Functions ============
-
-export async function getDutchAuction(intentId: bigint): Promise<DutchAuction | null> {
-  try {
-    const result = await aptos.view({
-      payload: {
-        function: `${VELOX_ADDRESS}::auction::get_dutch_auction`,
-        functionArguments: [VELOX_ADDRESS, intentId.toString()],
-      },
-    });
-
-    const [startTime, startPrice, endPrice, duration, isActive, winner, acceptedPrice] = result;
-
-    return {
-      intentId,
-      startTime: Number(startTime),
-      startPrice: BigInt(startPrice as string),
-      endPrice: BigInt(endPrice as string),
-      duration: Number(duration),
-      isActive: isActive as boolean,
-      winner: winner as string | null,
-      acceptedPrice: BigInt(acceptedPrice as string),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function getDutchPrice(intentId: bigint): Promise<bigint> {
-  const result = await aptos.view({
-    payload: {
-      function: `${VELOX_ADDRESS}::auction::get_dutch_price`,
-      functionArguments: [VELOX_ADDRESS, intentId.toString()],
-    },
-  });
-
-  return BigInt(result[0] as string);
-}
-
-// ============ Cancel Intent ============
+// ============================================================
+// Cancel Intent
+// ============================================================
 
 export async function cancelIntent(
   walletAddress: string,
@@ -619,4 +558,210 @@ export async function cancelIntentNative(
     signTransaction,
     signAndSubmitTransaction
   );
+}
+
+// ============================================================
+// View Functions - Intent
+// ============================================================
+
+export async function getIntent(intentId: bigint): Promise<unknown> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::submission::get_intent`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString()],
+    },
+  });
+  return result[0];
+}
+
+export async function getUserIntents(userAddress: string): Promise<bigint[]> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::submission::get_user_intents`,
+      functionArguments: [VELOX_ADDRESS, userAddress],
+    },
+  });
+  return (result[0] as string[]).map((id) => BigInt(id));
+}
+
+export async function getTotalIntents(): Promise<bigint> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::submission::get_total_intents`,
+      functionArguments: [VELOX_ADDRESS],
+    },
+  });
+  return BigInt(result[0] as string);
+}
+
+export async function getAuctionState(intentId: bigint): Promise<unknown> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::submission::get_auction_state`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString()],
+    },
+  });
+  return result[0];
+}
+
+// ============================================================
+// View Functions - Settlement
+// ============================================================
+
+export async function canFill(intentId: bigint, solverAddress: string): Promise<boolean> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::settlement::can_fill`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString(), solverAddress],
+    },
+  });
+  return result[0] as boolean;
+}
+
+export async function getMaxFills(): Promise<number> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::settlement::max_fills`,
+      functionArguments: [],
+    },
+  });
+  return Number(result[0]);
+}
+
+export async function calculateMinOutputForFill(
+  intentId: bigint,
+  fillInput: bigint
+): Promise<bigint> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::settlement::calculate_min_output_for_fill`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString(), fillInput.toString()],
+    },
+  });
+  return BigInt(result[0] as string);
+}
+
+export async function getFeeBps(): Promise<number> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::settlement::get_fee_bps`,
+      functionArguments: [VELOX_ADDRESS],
+    },
+  });
+  return Number(result[0]);
+}
+
+export async function getTotalCollectedFees(): Promise<bigint> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::settlement::get_total_collected`,
+      functionArguments: [VELOX_ADDRESS],
+    },
+  });
+  return BigInt(result[0] as string);
+}
+
+// ============================================================
+// View Functions - Auction
+// ============================================================
+
+export async function getDutchPrice(intentId: bigint): Promise<bigint> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::auction::get_current_dutch_price`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString()],
+    },
+  });
+  return BigInt(result[0] as string);
+}
+
+export async function getAuctionBids(intentId: bigint): Promise<unknown[]> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::auction::get_bids`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString()],
+    },
+  });
+  return result[0] as unknown[];
+}
+
+export async function canSolverFill(intentId: bigint, solverAddress: string): Promise<boolean> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::auction::can_solver_fill`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString(), solverAddress],
+    },
+  });
+  return result[0] as boolean;
+}
+
+export async function getAuctionWinner(intentId: bigint): Promise<{ hasWinner: boolean; winner: string }> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::auction::get_winner`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString()],
+    },
+  });
+  return {
+    hasWinner: result[0] as boolean,
+    winner: result[1] as string,
+  };
+}
+
+export async function getSealedBidTimeRemaining(intentId: bigint): Promise<number> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::auction::get_sealed_bid_time_remaining`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString()],
+    },
+  });
+  return Number(result[0]);
+}
+
+export async function getDutchTimeRemaining(intentId: bigint): Promise<number> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::auction::get_dutch_time_remaining`,
+      functionArguments: [VELOX_ADDRESS, intentId.toString()],
+    },
+  });
+  return Number(result[0]);
+}
+
+// ============================================================
+// View Functions - Solver Registry
+// ============================================================
+
+export async function getSolverInfo(solverAddress: string): Promise<unknown | null> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::solver_registry::get_solver_info`,
+        functionArguments: [VELOX_ADDRESS, solverAddress],
+      },
+    });
+    return result[0];
+  } catch {
+    return null;
+  }
+}
+
+export async function isSolverRegistered(solverAddress: string): Promise<boolean> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::solver_registry::is_registered`,
+      functionArguments: [VELOX_ADDRESS, solverAddress],
+    },
+  });
+  return result[0] as boolean;
+}
+
+export async function getMinStake(): Promise<bigint> {
+  const result = await aptos.view({
+    payload: {
+      function: `${VELOX_ADDRESS}::solver_registry::get_min_stake`,
+      functionArguments: [VELOX_ADDRESS],
+    },
+  });
+  return BigInt(result[0] as string);
 }
