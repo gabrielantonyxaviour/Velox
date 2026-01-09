@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { IntentRecord } from '@/app/lib/velox/types';
+import { IntentRecord, AuctionBid } from '@/app/lib/velox/types';
 import {
   getUserIntents as fetchUserIntentIds,
   getIntent,
   fetchIntentEvents,
   getIntentEventData,
+  getAuctionSolutions,
+  getAuctionInfo,
 } from '@/app/lib/velox/queries';
 import { VELOX_ADDRESS, MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
 import { getStoredAuctionInfo, cleanupOldAuctionEntries, checkAuctionForIntent, storeAuctionIntent } from '@/app/lib/velox/auction-storage';
@@ -45,9 +47,11 @@ interface DutchAuctionAcceptedEvent {
   accepted_price: string;
 }
 
-interface BidSubmittedEvent {
+interface SolutionSubmittedEvent {
   intent_id: string;
   solver: string;
+  output_amount: string;
+  rank: string;
 }
 
 interface TransactionEvent {
@@ -156,9 +160,9 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
                 });
               }
 
-              // Track bid submissions for bid count
-              if (event.type === `${VELOX_ADDRESS}::auction::BidSubmitted`) {
-                const data = event.data as unknown as BidSubmittedEvent;
+              // Track solution submissions for bid count (contract emits SolutionSubmitted)
+              if (event.type === `${VELOX_ADDRESS}::auction::SolutionSubmitted`) {
+                const data = event.data as unknown as SolutionSubmittedEvent;
                 const existing = auctionMap.get(data.intent_id);
                 if (existing) {
                   existing.bidCount = (existing.bidCount || 0) + 1;
@@ -283,6 +287,42 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
             // Ignore contract query errors
           }
         }
+      }
+
+      // Fetch actual bid details from on-chain for sealed-bid auctions
+      const sealedBidIntents = validIntents.filter(i => i.auctionType === 'sealed-bid');
+      if (sealedBidIntents.length > 0) {
+        const bidFetchPromises = sealedBidIntents.map(async (intent) => {
+          try {
+            // Fetch solutions from on-chain
+            const solutions = await getAuctionSolutions(intent.id);
+            const auctionData = await getAuctionInfo(intent.id);
+
+            if (solutions.length > 0) {
+              // Convert solutions to AuctionBid format
+              const bids: AuctionBid[] = solutions.map((sol) => ({
+                bidder: sol.solver,
+                amount: sol.outputAmount,
+                timestamp: sol.expiresAt - 60, // Approximate submission time (auction duration)
+                isWinner: auctionData?.winner === sol.solver,
+              }));
+
+              // Sort by amount descending (highest bid first)
+              bids.sort((a, b) => Number(b.amount - a.amount));
+              intent.bids = bids;
+              intent.bidCount = bids.length;
+
+              // Update winner if we have auction data
+              if (auctionData?.winner) {
+                intent.auctionWinner = auctionData.winner;
+              }
+            }
+          } catch {
+            // Ignore errors for individual intent bid fetching
+          }
+        });
+
+        await Promise.all(bidFetchPromises);
       }
 
       setIntents(validIntents);

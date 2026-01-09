@@ -615,6 +615,86 @@ export function clearPeriodFillCache(): void {
 
 // ============ Auction Query Functions ============
 
+/**
+ * Solution/bid from on-chain auction
+ */
+export interface AuctionSolution {
+  intentId: bigint;
+  solver: string;
+  outputAmount: bigint;
+  executionPrice: bigint;
+  expiresAt: number;
+}
+
+/**
+ * Get all solutions/bids for a sealed-bid auction from on-chain
+ */
+export async function getAuctionSolutions(intentId: bigint): Promise<AuctionSolution[]> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::auction::get_solutions`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+
+    if (!result || !result[0]) return [];
+
+    const solutions = result[0] as Array<Record<string, unknown>>;
+    return solutions.map((sol) => ({
+      intentId: BigInt(String(sol.intent_id || '0')),
+      solver: String(sol.solver || ''),
+      outputAmount: BigInt(String(sol.output_amount || '0')),
+      executionPrice: BigInt(String(sol.execution_price || '0')),
+      expiresAt: Number(sol.expires_at || 0),
+    }));
+  } catch (error) {
+    // Auction might not exist for this intent
+    console.debug('[Velox] No auction solutions for intent:', intentId.toString());
+    return [];
+  }
+}
+
+/**
+ * Get full auction info including winner from on-chain
+ */
+export async function getAuctionInfo(intentId: bigint): Promise<{
+  startTime: number;
+  endTime: number;
+  status: string;
+  winner: string | null;
+  solutionCount: number;
+} | null> {
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::auction::get_auction`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+
+    if (!result || !result[0]) return null;
+
+    const data = result[0] as Record<string, unknown>;
+    const status = data.status as Record<string, unknown>;
+    const winner = data.winner as { vec: string[] } | undefined;
+    const solutions = data.solutions as unknown[] | undefined;
+
+    return {
+      startTime: Number(data.start_time || 0),
+      endTime: Number(data.end_time || 0),
+      status: String(status?.__variant__ || 'Active'),
+      winner: winner?.vec?.[0] || null,
+      solutionCount: solutions?.length || 0,
+    };
+  } catch (error) {
+    // Auction might not exist
+    return null;
+  }
+}
+
 export interface DutchAuctionInfo {
   intentId: bigint;
   startTime: number;
