@@ -77,17 +77,9 @@ export default function WalletOnlyHome() {
               <div className="flex justify-center">
                 <IntentTabs onSuccess={handleIntentSuccess} onError={handleIntentError} />
               </div>
-              <div className="hidden lg:block">
-                <ActiveIntents
-                  intents={intents}
-                  loading={intentsLoading}
-                  onCancel={handleCancelIntent}
-                  cancellingId={cancellingId}
-                />
-              </div>
             </div>
             <div className="lg:col-span-2 space-y-6">
-              <div className="lg:hidden">
+              <div>
                 <ActiveIntents
                   intents={intents}
                   loading={intentsLoading}
