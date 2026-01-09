@@ -18,16 +18,28 @@ export type AuctionType =
   | 'dutch_accepted'
   | 'failed';
 
+// Auction type constants for use as values (like enum)
+// Use for form selection where only SEALED_BID or DUTCH is valid
+export const AUCTION_TYPE = {
+  SEALED_BID: 'sealed_bid' as const,
+  DUTCH: 'dutch' as const,
+};
+
+export type AuctionFormType = (typeof AUCTION_TYPE)[keyof typeof AUCTION_TYPE];
+
 // ============================================================
 // Core Types - Matching Contract Structs
 // ============================================================
 
-// Fill record - matches contract Fill struct
+// Fill record - matches contract Fill struct + indexer data
 export interface Fill {
   solver: string;
   inputAmount: bigint;
   outputAmount: bigint;
   filledAt: number;
+  // Added by indexer
+  txHash?: string;
+  chunkNumber?: number;
 }
 
 // Bid for sealed-bid auctions - matches contract Bid struct
@@ -342,6 +354,33 @@ export function isAuctionActive(record: IntentRecord): boolean {
     record.auction.type === 'sealed_bid_active' ||
     record.auction.type === 'dutch_active'
   );
+}
+
+/**
+ * Check if intent has a sealed-bid auction
+ */
+export function isSealedBidAuction(record: IntentRecord): boolean {
+  return (
+    record.auction.type === 'sealed_bid_active' ||
+    record.auction.type === 'sealed_bid_completed'
+  );
+}
+
+/**
+ * Check if intent has a Dutch auction
+ */
+export function isDutchAuction(record: IntentRecord): boolean {
+  return (
+    record.auction.type === 'dutch_active' ||
+    record.auction.type === 'dutch_accepted'
+  );
+}
+
+/**
+ * Check if intent has any auction mechanism
+ */
+export function hasAuction(record: IntentRecord): boolean {
+  return record.auction.type !== 'none' && record.auction.type !== 'failed';
 }
 
 /**

@@ -1,12 +1,12 @@
 'use client';
 
-import { AuctionType } from '@/app/lib/velox/types';
+import { AUCTION_TYPE, AuctionFormType } from '@/app/lib/velox/types';
 import { Label } from '@/app/components/ui/label';
 import { Clock, Gavel } from 'lucide-react';
 
 interface AuctionTypeSelectorProps {
-  value: AuctionType;
-  onChange: (type: AuctionType) => void;
+  value: AuctionFormType;
+  onChange: (type: AuctionFormType) => void;
 }
 
 export function AuctionTypeSelector({ value, onChange }: AuctionTypeSelectorProps) {
@@ -16,14 +16,14 @@ export function AuctionTypeSelector({ value, onChange }: AuctionTypeSelectorProp
       <div className="grid grid-cols-2 gap-4">
         <button
           type="button"
-          onClick={() => onChange(AuctionType.SEALED_BID)}
+          onClick={() => onChange(AUCTION_TYPE.SEALED_BID)}
           className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 cursor-pointer transition-colors ${
-            value === AuctionType.SEALED_BID
+            value === AUCTION_TYPE.SEALED_BID
               ? 'border-primary bg-primary/10'
               : 'border-border bg-muted/50 hover:bg-muted'
           }`}
         >
-          <Gavel className={`h-6 w-6 mb-2 ${value === AuctionType.SEALED_BID ? 'text-primary' : 'text-muted-foreground'}`} />
+          <Gavel className={`h-6 w-6 mb-2 ${value === AUCTION_TYPE.SEALED_BID ? 'text-primary' : 'text-muted-foreground'}`} />
           <span className="font-medium">Sealed Bid</span>
           <span className="text-xs text-muted-foreground text-center mt-1">
             Best offer wins
@@ -32,14 +32,14 @@ export function AuctionTypeSelector({ value, onChange }: AuctionTypeSelectorProp
 
         <button
           type="button"
-          onClick={() => onChange(AuctionType.DUTCH)}
+          onClick={() => onChange(AUCTION_TYPE.DUTCH)}
           className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 cursor-pointer transition-colors ${
-            value === AuctionType.DUTCH
+            value === AUCTION_TYPE.DUTCH
               ? 'border-amber-500 bg-amber-500/10'
               : 'border-border bg-muted/50 hover:bg-muted'
           }`}
         >
-          <Clock className={`h-6 w-6 mb-2 ${value === AuctionType.DUTCH ? 'text-amber-400' : 'text-muted-foreground'}`} />
+          <Clock className={`h-6 w-6 mb-2 ${value === AUCTION_TYPE.DUTCH ? 'text-amber-400' : 'text-muted-foreground'}`} />
           <span className="font-medium">Dutch</span>
           <span className="text-xs text-muted-foreground text-center mt-1">
             First taker wins

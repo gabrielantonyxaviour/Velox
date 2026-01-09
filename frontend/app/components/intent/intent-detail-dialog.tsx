@@ -1,14 +1,27 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { Progress } from '../ui/progress';
-import { IntentRecord, IntentType, getIntentTypeDisplay } from '@/app/lib/velox/types';
-import { getScheduledIntentInfo, ScheduledIntentInfo, fetchPeriodFillEvents } from '@/app/lib/velox/queries';
+import {
+  IntentRecord,
+  IntentType,
+  getIntentTypeDisplay,
+  isScheduledIntent,
+  isPartiallyFilled,
+  getFillPercentage,
+  getIntentTotalAmount,
+  isSealedBidAuction,
+  isDutchAuction,
+  hasAuction,
+  getRemainingChunks,
+  getTimeUntilNextChunk,
+  isNextChunkReady,
+} from '@/app/lib/velox/types';
 import { getExplorerUrl } from '@/app/lib/aptos';
-import { TOKENS } from '@/constants/contracts';
+import { TOKEN_LIST } from '@/app/constants/tokens';
 import {
   ArrowRight, Clock, ExternalLink, Calendar, TrendingUp, Timer, Check,
   ArrowUpRight, Zap, Target, Gavel, TrendingDown, User, DollarSign,
@@ -22,14 +35,6 @@ interface IntentDetailDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-interface PeriodFill {
-  txHash: string;
-  periodNumber: number;
-  inputAmount: bigint;
-  outputAmount: bigint;
-  filledAt: number;
-}
-
 const TYPE_COLORS: Record<IntentType, string> = {
   swap: 'bg-primary/10 text-primary',
   limit_order: 'bg-primary/10 text-primary',
@@ -38,21 +43,28 @@ const TYPE_COLORS: Record<IntentType, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-muted text-muted-foreground',
+  active: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
-  partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
 };
 
 function getTokenSymbol(address: string): string {
-  if (address === TOKENS.tUSDC.address) return 'tUSDC';
-  if (address === TOKENS.tMOVE.address) return 'tMOVE';
-  return address.slice(0, 8) + '...';
+  const token = TOKEN_LIST.find((t) => t.address === address);
+  return token?.symbol || address.slice(0, 8) + '...';
 }
 
-function formatAmount(amount: bigint): string {
-  return (Number(amount) / 1e8).toFixed(4);
+function getTokenDecimals(address: string): number {
+  const token = TOKEN_LIST.find((t) => t.address === address);
+  return token?.decimals || 8;
+}
+
+function formatAmount(amount: bigint, decimals: number = 8): string {
+  const divisor = BigInt(10 ** decimals);
+  const whole = amount / divisor;
+  const fraction = amount % divisor;
+  const fractionStr = fraction.toString().padStart(decimals, '0').slice(0, 4);
+  return `${whole}.${fractionStr}`;
 }
 
 function formatTime(timestamp: number): string {
@@ -75,77 +87,64 @@ function truncateAddress(addr: string): string {
   return addr.slice(0, 6) + '...' + addr.slice(-4);
 }
 
-function calculateSlippage(expected: bigint, actual: bigint): number {
-  if (expected === BigInt(0)) return 0;
-  const diff = Number(expected - actual);
-  return (diff / Number(expected)) * 100;
+function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return 'Ready';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
 }
 
 export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailDialogProps) {
-  const [scheduledInfo, setScheduledInfo] = useState<ScheduledIntentInfo | null>(null);
-  const [periodFills, setPeriodFills] = useState<PeriodFill[]>([]);
   const [countdown, setCountdown] = useState<string>('');
 
-  const isScheduledIntent = intent?.intentType === 'dca' || intent?.intentType === 'twap';
-  const isAuction = intent?.auctionType !== undefined;
+  const intentData = intent?.intent;
+  const isScheduled = intentData ? isScheduledIntent(intentData) : false;
+  const isAuction = intent ? hasAuction(intent) : false;
 
-  const fetchScheduledData = useCallback(async () => {
-    if (!intent || !isScheduledIntent) return;
-    const [info, fills] = await Promise.all([
-      getScheduledIntentInfo(intent.id),
-      fetchPeriodFillEvents(intent.id),
-    ]);
-    setScheduledInfo(info);
-    setPeriodFills(fills);
-  }, [intent, isScheduledIntent]);
-
+  // Update countdown for scheduled intents
   useEffect(() => {
-    if (open && isScheduledIntent) {
-      fetchScheduledData();
-      const interval = setInterval(fetchScheduledData, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [open, isScheduledIntent, fetchScheduledData]);
+    if (!intent || !open || !isScheduled) return;
 
-  useEffect(() => {
-    if (!scheduledInfo || !open) return;
     const updateCountdown = () => {
-      const now = Math.floor(Date.now() / 1000);
-      const diff = scheduledInfo.nextExecution - now;
-      if (diff <= 0) {
-        setCountdown(scheduledInfo.isReady ? 'Ready to execute' : 'Waiting for solver...');
+      const timeUntil = getTimeUntilNextChunk(intent);
+      if (timeUntil <= 0) {
+        setCountdown(isNextChunkReady(intent) ? 'Ready to execute' : 'Waiting for solver...');
         return;
       }
-      const days = Math.floor(diff / 86400);
-      const hours = Math.floor((diff % 86400) / 3600);
-      const mins = Math.floor((diff % 3600) / 60);
-      const secs = diff % 60;
-      if (days > 0) setCountdown(`${days}d ${hours}h ${mins}m`);
-      else if (hours > 0) setCountdown(`${hours}h ${mins}m ${secs}s`);
-      else if (mins > 0) setCountdown(`${mins}m ${secs}s`);
-      else setCountdown(`${secs}s`);
+      setCountdown(formatCountdown(timeUntil));
     };
+
     updateCountdown();
     const timer = setInterval(updateCountdown, 1000);
     return () => clearInterval(timer);
-  }, [scheduledInfo, open]);
+  }, [intent, open, isScheduled]);
 
-  if (!intent) return null;
+  if (!intent || !intentData) return null;
 
-  const periodsExecuted = scheduledInfo?.chunksExecuted ?? intent.periodsExecuted ?? periodFills.length;
-  const totalPeriods = scheduledInfo?.totalChunks ?? intent.totalPeriods ?? intent.numChunks ?? 0;
-  const progress = totalPeriods > 0 ? (periodsExecuted / totalPeriods) * 100 : 0;
-  const isScheduledCompleted = scheduledInfo?.isCompleted || (totalPeriods > 0 && periodsExecuted >= totalPeriods);
-  const totalOutputReceived = periodFills.reduce((acc, f) => acc + f.outputAmount, BigInt(0));
+  const inputDecimals = getTokenDecimals(intentData.inputToken);
+  const outputDecimals = getTokenDecimals(intentData.outputToken);
+  const totalAmount = getIntentTotalAmount(intentData);
 
+  // Scheduled intent progress
+  const totalChunks = intentData.numChunks ?? 0;
+  const chunksExecuted = intent.chunksExecuted ?? 0;
+  const progress = totalChunks > 0 ? (chunksExecuted / totalChunks) * 100 : 0;
+  const isScheduledCompleted = totalChunks > 0 && chunksExecuted >= totalChunks;
+
+  // Fill info
   const isFilled = intent.status === 'filled';
-  const slippage = isFilled && intent.minAmountOut && intent.outputAmount
-    ? calculateSlippage(intent.minAmountOut, intent.outputAmount)
-    : null;
+  const hasPartialFill = isPartiallyFilled(intent);
+  const fillPercentage = getFillPercentage(intent);
+  const solver = intent.fills.length > 0 ? intent.fills[0].solver : null;
 
   const getIcon = () => {
-    if (isAuction) return intent.auctionType === 'sealed-bid' ? Gavel : TrendingDown;
-    switch (intent.intentType) {
+    if (isAuction) return isSealedBidAuction(intent) ? Gavel : TrendingDown;
+    switch (intentData.type) {
       case 'swap': return Zap;
       case 'limit_order': return Target;
       case 'twap': return TrendingUp;
@@ -163,11 +162,11 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
             <Icon className="h-5 w-5 text-primary" />
             {isAuction ? (
               <Badge className={TYPE_COLORS.swap}>
-                {intent.auctionType === 'sealed-bid' ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
+                {isSealedBidAuction(intent) ? 'Sealed Bid Swap' : 'Dutch Auction Swap'}
               </Badge>
             ) : (
-              <Badge className={TYPE_COLORS[intent.intentType]}>
-                {getIntentTypeDisplay(intent.intentType)}
+              <Badge className={TYPE_COLORS[intentData.type]}>
+                {getIntentTypeDisplay(intentData.type)}
               </Badge>
             )}
             <span className="text-muted-foreground">#{intent.id.toString()}</span>
@@ -179,7 +178,7 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground">Status</span>
             <Badge className={STATUS_COLORS[intent.status]}>
-              {intent.status.replace('_', ' ').toUpperCase()}
+              {hasPartialFill ? 'PARTIAL' : intent.status.toUpperCase()}
             </Badge>
           </div>
 
@@ -188,41 +187,22 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
           {/* Token Pair */}
           <div className="flex items-center justify-center gap-4 py-3 px-4 rounded-lg bg-muted/50">
             <div className="text-center">
-              <p className="text-lg font-bold">{formatAmount(intent.amountIn)}</p>
-              <p className="text-xs text-muted-foreground">{getTokenSymbol(intent.inputToken)}</p>
+              <p className="text-lg font-bold">{formatAmount(totalAmount, inputDecimals)}</p>
+              <p className="text-xs text-muted-foreground">{getTokenSymbol(intentData.inputToken)}</p>
             </div>
             <ArrowRight className="h-5 w-5 text-muted-foreground" />
             <div className="text-center">
               <p className="text-lg font-bold text-primary">
-                {intent.outputAmount ? formatAmount(intent.outputAmount) : '?'}
+                {intent.totalOutputReceived > 0n
+                  ? formatAmount(intent.totalOutputReceived, outputDecimals)
+                  : '?'}
               </p>
-              <p className="text-xs text-muted-foreground">{getTokenSymbol(intent.outputToken)}</p>
+              <p className="text-xs text-muted-foreground">{getTokenSymbol(intentData.outputToken)}</p>
             </div>
           </div>
 
-          {/* Swap-specific: Slippage & Rate */}
-          {intent.intentType === 'swap' && isFilled && slippage !== null && (
-            <>
-              <Separator />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-2 rounded bg-muted/30">
-                  <p className="text-xs text-muted-foreground">Slippage</p>
-                  <p className={`font-medium ${slippage > 0 ? 'text-destructive' : 'text-primary'}`}>
-                    {slippage > 0 ? '-' : '+'}{Math.abs(slippage).toFixed(2)}%
-                  </p>
-                </div>
-                {intent.executionPrice && (
-                  <div className="p-2 rounded bg-muted/30">
-                    <p className="text-xs text-muted-foreground">Exec Price</p>
-                    <p className="font-medium">{formatPrice(intent.executionPrice)}</p>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
           {/* Limit Order-specific */}
-          {intent.intentType === 'limit_order' && (
+          {intentData.type === 'limit_order' && (
             <>
               <Separator />
               <div className="space-y-2">
@@ -230,20 +210,16 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
                   <span className="text-muted-foreground">Limit Price</span>
                   <span className="font-medium flex items-center gap-1">
                     <DollarSign className="h-3 w-3" />
-                    {formatPrice(intent.limitPrice ?? BigInt(0))}
+                    {formatPrice(intentData.limitPrice ?? 0n)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Partial Fill</span>
-                  <span>{intent.partialFillAllowed ? 'Allowed' : 'Not Allowed'}</span>
-                </div>
-                {intent.filledAmount > BigInt(0) && (
+                {(hasPartialFill || isFilled) && (
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Fill Progress</span>
-                      <span>{((Number(intent.filledAmount) / Number(intent.amountIn)) * 100).toFixed(1)}%</span>
+                      <span>{fillPercentage.toFixed(1)}%</span>
                     </div>
-                    <Progress value={(Number(intent.filledAmount) / Number(intent.amountIn)) * 100} className="h-2" />
+                    <Progress value={fillPercentage} className="h-2" />
                   </div>
                 )}
               </div>
@@ -251,14 +227,16 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
           )}
 
           {/* TWAP/DCA-specific */}
-          {isScheduledIntent && (
+          {isScheduled && (
             <>
               <Separator />
               <div className="space-y-3">
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium">{periodsExecuted} / {totalPeriods} {intent.intentType === 'dca' ? 'periods' : 'chunks'}</span>
+                    <span className="font-medium">
+                      {chunksExecuted} / {totalChunks} {intentData.type === 'dca' ? 'periods' : 'chunks'}
+                    </span>
                   </div>
                   <Progress value={progress} className="h-2" />
                 </div>
@@ -266,7 +244,9 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
                   <div className="flex items-center justify-between p-2 rounded bg-primary/10">
                     <div className="flex items-center gap-2">
                       <Timer className="h-4 w-4 text-primary" />
-                      <span className="text-muted-foreground">Next {intent.intentType === 'dca' ? 'buy' : 'chunk'}:</span>
+                      <span className="text-muted-foreground">
+                        Next {intentData.type === 'dca' ? 'buy' : 'chunk'}:
+                      </span>
                     </div>
                     <span className="font-semibold text-primary">{countdown}</span>
                   </div>
@@ -274,35 +254,60 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
                 {isScheduledCompleted && (
                   <div className="flex items-center gap-2 p-2 rounded bg-primary/10">
                     <Check className="h-4 w-4 text-primary" />
-                    <span className="text-primary">All {totalPeriods} {intent.intentType === 'dca' ? 'periods' : 'chunks'} completed!</span>
+                    <span className="text-primary">
+                      All {totalChunks} {intentData.type === 'dca' ? 'periods' : 'chunks'} completed!
+                    </span>
                   </div>
                 )}
-                {totalOutputReceived > BigInt(0) && (
+                {intent.totalOutputReceived > 0n && (
                   <div className="flex justify-between p-2 rounded bg-muted/30">
                     <span className="text-muted-foreground">Total Received</span>
-                    <span className="font-semibold text-primary">{formatAmount(totalOutputReceived)} {getTokenSymbol(intent.outputToken)}</span>
+                    <span className="font-semibold text-primary">
+                      {formatAmount(intent.totalOutputReceived, outputDecimals)} {getTokenSymbol(intentData.outputToken)}
+                    </span>
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  {intent.amountPerPeriod && (
-                    <div><span className="text-muted-foreground">Per {intent.intentType === 'dca' ? 'Period' : 'Chunk'}:</span> {formatAmount(intent.amountPerPeriod)}</div>
+                  {intentData.type === 'dca' && intentData.amountPerPeriod && (
+                    <div>
+                      <span className="text-muted-foreground">Per Period: </span>
+                      {formatAmount(intentData.amountPerPeriod, inputDecimals)}
+                    </div>
                   )}
-                  {intent.intervalSeconds && (
-                    <div><span className="text-muted-foreground">Interval:</span> {formatIntervalHuman(intent.intervalSeconds)}</div>
+                  {intentData.type === 'twap' && intentData.totalAmount && intentData.numChunks && (
+                    <div>
+                      <span className="text-muted-foreground">Per Chunk: </span>
+                      {formatAmount(intentData.totalAmount / BigInt(intentData.numChunks), inputDecimals)}
+                    </div>
                   )}
-                  {intent.maxSlippageBps && (
-                    <div><span className="text-muted-foreground">Max Slip:</span> {(intent.maxSlippageBps / 100).toFixed(2)}%</div>
+                  {intentData.intervalSeconds && (
+                    <div>
+                      <span className="text-muted-foreground">Interval: </span>
+                      {formatIntervalHuman(intentData.intervalSeconds)}
+                    </div>
                   )}
                 </div>
-                {periodFills.length > 0 && (
+                {intent.fills.length > 0 && (
                   <div className="space-y-1">
                     <span className="text-xs text-muted-foreground">Fill History:</span>
                     <div className="flex flex-wrap gap-1">
-                      {periodFills.map((fill) => (
-                        <a key={fill.txHash} href={getExplorerUrl(fill.txHash)} target="_blank" rel="noopener noreferrer"
-                          className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20">
-                          #{fill.periodNumber} <ArrowUpRight className="h-2 w-2 inline" />
-                        </a>
+                      {intent.fills.map((fill, idx) => (
+                        <div
+                          key={`fill-${idx}`}
+                          className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary"
+                        >
+                          #{idx + 1}
+                          {fill.txHash && (
+                            <a
+                              href={getExplorerUrl(fill.txHash)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-1 hover:underline"
+                            >
+                              <ArrowUpRight className="h-2 w-2 inline" />
+                            </a>
+                          )}
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -312,24 +317,30 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
           )}
 
           {/* Auction-specific - Sealed Bid */}
-          {isAuction && intent.auctionType === 'sealed-bid' && (
+          {isAuction && isSealedBidAuction(intent) && (
             <SealedBidAuctionSection intent={intent} />
           )}
 
           {/* Auction-specific - Dutch Auction */}
-          {isAuction && intent.auctionType === 'dutch' && (
+          {isAuction && isDutchAuction(intent) && (
             <DutchAuctionChart intent={intent} />
           )}
 
           {/* Solver Info */}
-          {isFilled && intent.solver && !isAuction && (
+          {isFilled && solver && !isAuction && (
             <>
               <Separator />
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" /> Solver</span>
-                <a href={`https://explorer.movementnetwork.xyz/account/${intent.solver}?network=testnet`}
-                  target="_blank" rel="noopener noreferrer" className="font-mono text-primary text-xs hover:underline">
-                  {truncateAddress(intent.solver)}
+                <span className="text-muted-foreground flex items-center gap-1">
+                  <User className="h-3 w-3" /> Solver
+                </span>
+                <a
+                  href={`https://explorer.movementnetwork.xyz/account/${solver}?network=testnet`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-primary text-xs hover:underline"
+                >
+                  {truncateAddress(solver)}
                 </a>
               </div>
             </>
@@ -341,35 +352,46 @@ export function IntentDetailDialog({ intent, open, onOpenChange }: IntentDetailD
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Created</span>
-              <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatTime(intent.createdAt)}</span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {formatTime(intent.createdAt)}
+              </span>
             </div>
-            {intent.deadline && (
+            {intentData.deadline && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Deadline</span>
-                <span>{formatTime(intent.deadline)}</span>
+                <span>{formatTime(intentData.deadline)}</span>
+              </div>
+            )}
+            {intentData.expiry && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Expiry</span>
+                <span>{formatTime(intentData.expiry)}</span>
               </div>
             )}
           </div>
 
           {/* Transaction Links */}
-          {(intent.submissionTxHash || intent.settlementTxHash) && (
+          {intent.fills.length > 0 && intent.fills.some(f => f.txHash) && (
             <>
               <Separator />
               <div className="space-y-1">
-                {intent.submissionTxHash && (
-                  <a href={getExplorerUrl(intent.submissionTxHash)} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center justify-between text-xs hover:text-primary">
-                    <span className="text-muted-foreground">Submission Tx</span>
-                    <span className="flex items-center gap-1 text-primary">{intent.submissionTxHash.slice(0, 10)}...<ExternalLink className="h-3 w-3" /></span>
+                <span className="text-xs text-muted-foreground">Transactions</span>
+                {intent.fills.slice(0, 3).filter(f => f.txHash).map((fill, idx) => (
+                  <a
+                    key={fill.txHash || `fill-${idx}`}
+                    href={getExplorerUrl(fill.txHash!)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between text-xs hover:text-primary"
+                  >
+                    <span className="text-muted-foreground">Fill #{fill.chunkNumber ?? idx + 1}</span>
+                    <span className="flex items-center gap-1 text-primary">
+                      {fill.txHash!.slice(0, 10)}...
+                      <ExternalLink className="h-3 w-3" />
+                    </span>
                   </a>
-                )}
-                {intent.settlementTxHash && (
-                  <a href={getExplorerUrl(intent.settlementTxHash)} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center justify-between text-xs hover:text-primary">
-                    <span className="text-muted-foreground">Settlement Tx</span>
-                    <span className="flex items-center gap-1 text-primary">{intent.settlementTxHash.slice(0, 10)}...<ExternalLink className="h-3 w-3" /></span>
-                  </a>
-                )}
+                ))}
               </div>
             </>
           )}

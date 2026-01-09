@@ -1,10 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { IntentRecord, AuctionBid } from '@/app/lib/velox/types';
+import {
+  IntentRecord,
+  Bid,
+  isSealedBidAuction,
+  isAuctionActive,
+} from '@/app/lib/velox/types';
 import { Separator } from '../ui/separator';
-import { Timer, Trophy, Users, Clock, Medal, ExternalLink, Info } from 'lucide-react';
-import { getExplorerUrl } from '@/app/lib/aptos';
+import { Timer, Trophy, Users, Clock, Medal, Info } from 'lucide-react';
 
 interface SealedBidAuctionSectionProps {
   intent: IntentRecord;
@@ -14,8 +18,12 @@ function truncateAddress(addr: string): string {
   return addr.slice(0, 6) + '...' + addr.slice(-4);
 }
 
-function formatAmount(amount: bigint): string {
-  return (Number(amount) / 1e8).toFixed(4);
+function formatAmount(amount: bigint, decimals: number = 8): string {
+  const divisor = BigInt(10 ** decimals);
+  const whole = amount / divisor;
+  const fraction = amount % divisor;
+  const fractionStr = fraction.toString().padStart(decimals, '0').slice(0, 4);
+  return `${whole}.${fractionStr}`;
 }
 
 function formatTimeRemaining(seconds: number): string {
@@ -34,13 +42,16 @@ function formatBidTime(timestamp: number): string {
 export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps) {
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
 
-  const isActive = intent.auctionStatus === 'active';
-  const auctionEndTime = intent.auctionEndTime ?? (intent.createdAt + (intent.auctionDuration ?? 60));
+  const { auction } = intent;
+  const isActive = isAuctionActive(intent);
+  const auctionEndTime = auction.endTime ?? (intent.createdAt + (auction.duration ?? 60));
 
-  // Use real bids from intent if available, sorted by amount descending
-  const bids = (intent.bids || []).sort((a, b) => Number(b.amount - a.amount));
+  // Get bids from auction state, sorted by outputAmount descending (higher = better for user)
+  const bids: Bid[] = (auction.bids || []).sort(
+    (a, b) => Number(b.outputAmount - a.outputAmount)
+  );
   const hasBidData = bids.length > 0;
-  const bidCount = intent.bidCount ?? 0;
+  const bidCount = bids.length;
 
   useEffect(() => {
     if (!isActive) {
@@ -90,7 +101,7 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
               <Users className="h-3 w-3" />
               <span className="text-xs">Total Bids</span>
             </div>
-            <p className="font-bold text-lg">{hasBidData ? bids.length : bidCount}</p>
+            <p className="font-bold text-lg">{bidCount}</p>
           </div>
           <div className="p-2 rounded bg-muted/30 text-center">
             <div className="flex items-center justify-center gap-1 text-muted-foreground">
@@ -98,7 +109,7 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
               <span className="text-xs">Highest Bid</span>
             </div>
             <p className="font-bold text-lg text-primary">
-              {hasBidData ? formatAmount(bids[0].amount) : '--'}
+              {hasBidData ? formatAmount(bids[0].outputAmount) : '--'}
             </p>
           </div>
         </div>
@@ -121,77 +132,66 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
                   </p>
                   <p className="text-xs text-muted-foreground/70 mt-1">
                     {isActive
-                      ? (bidCount > 0 ? `${bidCount} bid${bidCount > 1 ? 's' : ''} submitted` : 'No bids yet')
-                      : (intent.auctionWinner ? 'Winner shown below' : 'Auction completed')}
+                      ? 'Waiting for bids...'
+                      : (auction.winner ? 'Winner shown below' : 'Auction completed')}
                   </p>
                 </div>
               ) : (
-                bids.map((bid, index) => (
-                  <div
-                    key={`${bid.bidder}-${bid.timestamp}`}
-                    className={`flex items-center justify-between p-2 rounded-lg transition-colors ${
-                      bid.isWinner
-                        ? 'bg-primary/20 border border-primary/30'
-                        : index === 0 && isActive
-                        ? 'bg-primary/10 border border-primary/30'
-                        : 'bg-muted/30 hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {getMedalIcon(index)}
-                      <div>
-                        <p className="font-mono text-xs">
-                          {truncateAddress(bid.bidder)}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-2.5 w-2.5" />
-                          {formatBidTime(bid.timestamp)}
-                        </p>
+                bids.map((bid, index) => {
+                  const isWinner = auction.winner === bid.solver;
+                  return (
+                    <div
+                      key={`${bid.solver}-${bid.submittedAt}`}
+                      className={`flex items-center justify-between p-2 rounded-lg transition-colors ${
+                        isWinner
+                          ? 'bg-primary/20 border border-primary/30'
+                          : index === 0 && isActive
+                          ? 'bg-primary/10 border border-primary/30'
+                          : 'bg-muted/30 hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {getMedalIcon(index)}
+                        <div>
+                          <p className="font-mono text-xs">
+                            {truncateAddress(bid.solver)}
+                          </p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-2.5 w-2.5" />
+                            {formatBidTime(bid.submittedAt)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
                       <div className="text-right">
-                        <p className={`font-bold ${bid.isWinner ? 'text-primary' : ''}`}>
-                          {formatAmount(bid.amount)}
+                        <p className={`font-bold ${isWinner ? 'text-primary' : ''}`}>
+                          {formatAmount(bid.outputAmount)}
                         </p>
-                        {bid.isWinner && (
+                        {isWinner && (
                           <span className="text-xs text-primary">Winner</span>
                         )}
                       </div>
-                      {bid.txHash && (
-                        <a
-                          href={getExplorerUrl(bid.txHash)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1 rounded hover:bg-muted/50"
-                          onClick={(e) => e.stopPropagation()}
-                          title="View transaction"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5 text-primary" />
-                        </a>
-                      )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         </div>
 
         {/* Winner Info */}
-        {intent.auctionWinner && (
+        {auction.winner && (
           <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/30">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-primary" />
               <span className="text-sm">Winning Solver</span>
             </div>
             <a
-              href={`https://explorer.movementnetwork.xyz/account/${intent.auctionWinner}?network=testnet`}
+              href={`https://explorer.movementnetwork.xyz/account/${auction.winner}?network=testnet`}
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono text-xs text-primary hover:underline"
             >
-              {truncateAddress(intent.auctionWinner)}
+              {truncateAddress(auction.winner)}
             </a>
           </div>
         )}

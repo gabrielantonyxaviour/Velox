@@ -2,8 +2,15 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { IntentRecord, getIntentTypeDisplay, IntentType } from '@/app/lib/velox/types';
-import { getScheduledIntentInfo, ScheduledIntentInfo, fetchPeriodFillEvents } from '@/app/lib/velox/queries';
+import {
+  IntentRecord,
+  getIntentTypeDisplay,
+  IntentType,
+  hasAuction,
+  isNextChunkReady,
+  getTimeUntilNextChunk,
+  getIntentTotalAmount,
+} from '@/app/lib/velox/types';
 import { ExplorerSwapRow } from './explorer-swap-row';
 import { ExplorerLimitRow } from './explorer-limit-row';
 import { ExplorerAuctionRow } from './explorer-auction-row';
@@ -13,9 +20,8 @@ import { TOKEN_LIST } from '@/app/constants/tokens';
 import { ArrowRight, ChevronRight, Timer, Calendar, TrendingUp, Check } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-500/10 text-amber-400',
+  active: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
-  partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
 };
@@ -49,14 +55,22 @@ function getTokenDecimals(address: string): number {
   return token?.decimals || 8;
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${mins}m`;
+}
+
 export function ExplorerIntentRow({ intent }: ExplorerIntentRowProps) {
   // Route auction intents to specialized component
-  if (intent.auctionType) {
+  if (hasAuction(intent)) {
     return <ExplorerAuctionRow intent={intent} />;
   }
 
   // Route based on intent type
-  switch (intent.intentType) {
+  switch (intent.intent.type) {
     case 'swap':
       return <ExplorerSwapRow intent={intent} />;
 
@@ -74,70 +88,47 @@ export function ExplorerIntentRow({ intent }: ExplorerIntentRowProps) {
 
 // Scheduled intent row (DCA/TWAP) with progress tracking
 function ExplorerScheduledRow({ intent }: { intent: IntentRecord }) {
-  const [scheduledInfo, setScheduledInfo] = useState<ScheduledIntentInfo | null>(null);
-  const [periodFillCount, setPeriodFillCount] = useState(0);
   const [countdown, setCountdown] = useState<string>('');
 
-  const inputSymbol = getTokenSymbol(intent.inputToken);
-  const outputSymbol = getTokenSymbol(intent.outputToken);
-  const inputDecimals = getTokenDecimals(intent.inputToken);
-  const outputDecimals = getTokenDecimals(intent.outputToken);
+  const { intent: innerIntent } = intent;
+  const inputSymbol = getTokenSymbol(innerIntent.inputToken);
+  const outputSymbol = getTokenSymbol(innerIntent.outputToken);
+  const inputDecimals = getTokenDecimals(innerIntent.inputToken);
+  const outputDecimals = getTokenDecimals(innerIntent.outputToken);
 
-  const isDCA = intent.intentType === 'dca';
+  const isDCA = innerIntent.type === 'dca';
 
-  const fetchData = useCallback(async () => {
-    const [info, fills] = await Promise.all([
-      getScheduledIntentInfo(intent.id),
-      fetchPeriodFillEvents(intent.id),
-    ]);
-    setScheduledInfo(info);
-    setPeriodFillCount(fills.length);
-  }, [intent.id]);
+  // Use IntentRecord fields directly - no need to fetch from contract
+  const chunksExecuted = intent.chunksExecuted;
+  const totalChunks = isDCA ? (innerIntent.totalPeriods ?? 0) : (innerIntent.numChunks ?? 0);
+  const isCompleted = totalChunks > 0 && chunksExecuted >= totalChunks;
+  const isReady = isNextChunkReady(intent);
+  const nextExecution = intent.nextExecution;
 
+  // Countdown timer
   useEffect(() => {
-    void fetchData();
-    const interval = setInterval(() => void fetchData(), 15000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
-
-  useEffect(() => {
-    if (!scheduledInfo) return;
-
     const updateCountdown = () => {
-      const now = Math.floor(Date.now() / 1000);
-      const diff = scheduledInfo.nextExecution - now;
+      const remaining = getTimeUntilNextChunk(intent);
 
-      if (diff <= 0) {
-        setCountdown(scheduledInfo.isReady ? 'Ready' : 'Waiting...');
+      if (remaining <= 0) {
+        setCountdown(isReady ? 'Ready' : 'Waiting...');
         return;
       }
 
-      const hours = Math.floor(diff / 3600);
-      const mins = Math.floor((diff % 3600) / 60);
-      const secs = diff % 60;
-
-      if (hours > 0) {
-        setCountdown(`${hours}h ${mins}m`);
-      } else if (mins > 0) {
-        setCountdown(`${mins}m ${secs}s`);
-      } else {
-        setCountdown(`${secs}s`);
-      }
+      setCountdown(formatDuration(Math.floor(remaining)));
     };
 
     updateCountdown();
     const timer = setInterval(updateCountdown, 1000);
     return () => clearInterval(timer);
-  }, [scheduledInfo]);
+  }, [intent, isReady, nextExecution]);
 
-  const periodsExecuted = scheduledInfo?.chunksExecuted ?? intent.periodsExecuted ?? intent.chunksExecuted ?? periodFillCount;
-  const totalPeriods = scheduledInfo?.totalChunks ?? intent.totalPeriods ?? intent.numChunks ?? 0;
-  const progress = totalPeriods > 0 ? (periodsExecuted / totalPeriods) * 100 : 0;
-  const isCompleted = scheduledInfo?.isCompleted || (totalPeriods > 0 && periodsExecuted >= totalPeriods);
+  const progress = totalChunks > 0 ? (chunksExecuted / totalChunks) * 100 : 0;
+  const totalAmount = getIntentTotalAmount(innerIntent);
 
-  // Calculate accumulated output from event fills
-  const formattedOutput = intent.outputAmount
-    ? formatAmount(intent.outputAmount, outputDecimals)
+  // Use accumulated output from IntentRecord
+  const formattedOutput = intent.totalOutputReceived > BigInt(0)
+    ? formatAmount(intent.totalOutputReceived, outputDecimals)
     : null;
 
   return (
@@ -153,8 +144,8 @@ function ExplorerScheduledRow({ intent }: { intent: IntentRecord }) {
           ) : (
             <TrendingUp className="h-4 w-4 text-primary" />
           )}
-          <Badge className={TYPE_COLORS[intent.intentType] + ' text-xs'}>
-            {getIntentTypeDisplay(intent.intentType)}
+          <Badge className={TYPE_COLORS[innerIntent.type] + ' text-xs'}>
+            {getIntentTypeDisplay(innerIntent.type)}
           </Badge>
           <span className="text-muted-foreground">#{intent.id.toString()}</span>
         </div>
@@ -174,18 +165,18 @@ function ExplorerScheduledRow({ intent }: { intent: IntentRecord }) {
 
       {/* Amount display */}
       <div className="flex items-center gap-2 text-xs mb-2">
-        <span className="font-medium">{formatAmount(intent.amountIn, inputDecimals)} {inputSymbol}</span>
+        <span className="font-medium">{formatAmount(totalAmount, inputDecimals)} {inputSymbol}</span>
         <ArrowRight className="h-3 w-3 text-muted-foreground" />
         {formattedOutput ? (
           <span className="text-primary font-medium">{formattedOutput} {outputSymbol}</span>
         ) : (
           <span>{outputSymbol}</span>
         )}
-        {intent.intervalSeconds && (
+        {innerIntent.intervalSeconds && (
           <span className="ml-2 text-muted-foreground">
-            every {intent.intervalSeconds < 3600
-              ? `${Math.floor(intent.intervalSeconds / 60)}m`
-              : `${Math.floor(intent.intervalSeconds / 3600)}h`}
+            every {innerIntent.intervalSeconds < 3600
+              ? `${Math.floor(innerIntent.intervalSeconds / 60)}m`
+              : `${Math.floor(innerIntent.intervalSeconds / 3600)}h`}
           </span>
         )}
       </div>
@@ -197,7 +188,7 @@ function ExplorerScheduledRow({ intent }: { intent: IntentRecord }) {
             <span className="text-muted-foreground">
               {isDCA ? 'Periods' : 'Chunks'}
             </span>
-            <span className="font-medium">{periodsExecuted}/{totalPeriods}</span>
+            <span className="font-medium">{chunksExecuted}/{totalChunks}</span>
           </div>
           <Progress value={progress} className="h-1.5" />
         </div>

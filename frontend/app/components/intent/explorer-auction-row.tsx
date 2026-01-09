@@ -2,7 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { IntentRecord } from '@/app/lib/velox/types';
+import {
+  IntentRecord,
+  isSealedBidAuction,
+  isDutchAuction,
+  isAuctionActive,
+  getIntentTotalAmount,
+} from '@/app/lib/velox/types';
 import { Badge } from '../ui/badge';
 import { TOKEN_LIST } from '@/app/constants/tokens';
 import {
@@ -11,9 +17,8 @@ import {
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-500/10 text-amber-400',
+  active: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
-  partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
 };
@@ -177,24 +182,27 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [currentDutchPrice, setCurrentDutchPrice] = useState<bigint | null>(null);
 
-  const inputSymbol = getTokenSymbol(intent.inputToken);
-  const outputSymbol = getTokenSymbol(intent.outputToken);
-  const inputDecimals = getTokenDecimals(intent.inputToken);
-  const outputDecimals = getTokenDecimals(intent.outputToken);
+  const { intent: innerIntent, auction } = intent;
+  const inputSymbol = getTokenSymbol(innerIntent.inputToken);
+  const outputSymbol = getTokenSymbol(innerIntent.outputToken);
+  const inputDecimals = getTokenDecimals(innerIntent.inputToken);
+  const outputDecimals = getTokenDecimals(innerIntent.outputToken);
 
-  const isSealedBid = intent.auctionType === 'sealed-bid';
-  const isDutch = intent.auctionType === 'dutch';
-  const isActive = intent.auctionStatus === 'active';
-  const isCompleted = intent.auctionStatus === 'completed' || intent.status === 'filled';
+  const isSealedBid = isSealedBidAuction(intent);
+  const isDutch = isDutchAuction(intent);
+  const isActive = isAuctionActive(intent);
+  const isCompleted = intent.status === 'filled' ||
+    auction.type === 'sealed_bid_completed' ||
+    auction.type === 'dutch_accepted';
 
   // Calculate Dutch auction current price and countdown
   const updateDutchState = useCallback(() => {
-    if (!isDutch || !intent.auctionStartTime || !intent.auctionDuration) return;
-    if (!intent.auctionStartPrice || !intent.auctionEndPrice) return;
+    if (!isDutch || !auction.startTime || !auction.duration) return;
+    if (!auction.startPrice || !auction.endPrice) return;
 
     const now = Math.floor(Date.now() / 1000);
-    const elapsed = now - intent.auctionStartTime;
-    const duration = intent.auctionDuration;
+    const elapsed = now - auction.startTime;
+    const duration = auction.duration;
     const remaining = Math.max(0, duration - elapsed);
 
     // Update elapsed time for curve
@@ -213,22 +221,22 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
 
     // Update price
     if (elapsed >= duration) {
-      setCurrentDutchPrice(intent.auctionEndPrice);
+      setCurrentDutchPrice(auction.endPrice);
     } else {
-      const startPrice = Number(intent.auctionStartPrice);
-      const endPrice = Number(intent.auctionEndPrice);
+      const startPrice = Number(auction.startPrice);
+      const endPrice = Number(auction.endPrice);
       const priceDiff = startPrice - endPrice;
       const currentPrice = startPrice - (priceDiff * elapsed / duration);
       setCurrentDutchPrice(BigInt(Math.floor(currentPrice)));
     }
-  }, [isDutch, intent.auctionStartTime, intent.auctionDuration, intent.auctionStartPrice, intent.auctionEndPrice]);
+  }, [isDutch, auction.startTime, auction.duration, auction.startPrice, auction.endPrice]);
 
   // Sealed-bid countdown
   const updateSealedBidCountdown = useCallback(() => {
-    if (!isSealedBid || !intent.auctionEndTime) return;
+    if (!isSealedBid || !auction.endTime) return;
 
     const now = Math.floor(Date.now() / 1000);
-    const remaining = Math.max(0, intent.auctionEndTime - now);
+    const remaining = Math.max(0, auction.endTime - now);
 
     if (remaining <= 0) {
       setCountdown('Ended');
@@ -239,7 +247,7 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
     } else {
       setCountdown(`${Math.floor(remaining / 3600)}h`);
     }
-  }, [isSealedBid, intent.auctionEndTime]);
+  }, [isSealedBid, auction.endTime]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -254,6 +262,15 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
       return () => clearInterval(timer);
     }
   }, [isActive, isDutch, isSealedBid, updateDutchState, updateSealedBidCountdown]);
+
+  // Get total input amount
+  const totalAmount = getIntentTotalAmount(innerIntent);
+
+  // Get bid count for sealed-bid auctions
+  const bidCount = auction.bids?.length ?? 0;
+
+  // Get winner info
+  const winner = auction.winner || auction.acceptedBy;
 
   return (
     <Link
@@ -290,11 +307,11 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
       {/* Amount & Details Row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{formatAmount(intent.amountIn, inputDecimals)} {inputSymbol}</span>
+          <span className="font-medium">{formatAmount(totalAmount, inputDecimals)} {inputSymbol}</span>
           <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          {isCompleted && intent.outputAmount ? (
+          {isCompleted && intent.totalOutputReceived > BigInt(0) ? (
             <span className="text-primary font-medium">
-              {formatAmount(intent.outputAmount, outputDecimals)} {outputSymbol}
+              {formatAmount(intent.totalOutputReceived, outputDecimals)} {outputSymbol}
             </span>
           ) : (
             <span>{outputSymbol}</span>
@@ -306,7 +323,7 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
           {isSealedBid && isActive && (
             <div className="flex items-center gap-1 text-primary">
               <Users className="h-3 w-3" />
-              <span>{intent.bidCount ?? 0} bids</span>
+              <span>{bidCount} bids</span>
             </div>
           )}
 
@@ -326,10 +343,10 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
           )}
 
           {/* Winner for completed */}
-          {isCompleted && (intent.auctionWinner || intent.solver) && (
+          {isCompleted && winner && (
             <div className="flex items-center gap-1 text-muted-foreground">
               <User className="h-3 w-3" />
-              <span>{truncateAddress(intent.auctionWinner || intent.solver || '')}</span>
+              <span>{truncateAddress(winner)}</span>
             </div>
           )}
 
@@ -338,20 +355,20 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
       </div>
 
       {/* Dutch Auction Price Curve */}
-      {isDutch && intent.auctionStartPrice && intent.auctionEndPrice && intent.auctionDuration && (
+      {isDutch && auction.startPrice && auction.endPrice && auction.duration && (
         <div className="space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{formatPrice(intent.auctionStartPrice)}</span>
+            <span>{formatPrice(auction.startPrice)}</span>
             <span className="text-amber-400">{currentDutchPrice ? formatPrice(currentDutchPrice) : '--'}</span>
-            <span>{formatPrice(intent.auctionEndPrice)}</span>
+            <span>{formatPrice(auction.endPrice)}</span>
           </div>
           <div className="rounded border border-amber-500/20 overflow-hidden bg-background/50">
             <MiniDutchCurve
-              startPrice={intent.auctionStartPrice}
-              endPrice={intent.auctionEndPrice}
-              duration={intent.auctionDuration}
+              startPrice={auction.startPrice}
+              endPrice={auction.endPrice}
+              duration={auction.duration}
               elapsed={elapsedTime}
-              currentPrice={currentDutchPrice ?? intent.auctionStartPrice}
+              currentPrice={currentDutchPrice ?? auction.startPrice}
             />
           </div>
         </div>
