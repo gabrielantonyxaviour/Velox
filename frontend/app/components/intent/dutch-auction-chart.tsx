@@ -96,12 +96,12 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Get computed colors from CSS variables
+    // Get computed colors from CSS variables (hex format)
     const computedStyle = getComputedStyle(document.documentElement);
-    const bgColor = computedStyle.getPropertyValue('--background').trim() || '0 0% 7%';
-    const primaryColor = computedStyle.getPropertyValue('--primary').trim() || '35 92% 65%';
-    const mutedFgColor = computedStyle.getPropertyValue('--muted-foreground').trim() || '0 0% 45%';
-    const borderColor = computedStyle.getPropertyValue('--border').trim() || '0 0% 15%';
+    const bgColor = computedStyle.getPropertyValue('--background').trim() || '#0c0a09';
+    const primaryColor = computedStyle.getPropertyValue('--primary').trim() || '#c2956a';
+    const mutedFgColor = computedStyle.getPropertyValue('--muted-foreground').trim() || '#a8a29e';
+    const borderColor = computedStyle.getPropertyValue('--border').trim() || '#44403c';
 
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
@@ -116,7 +116,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     const chartHeight = height - padding.top - padding.bottom;
 
     // Clear canvas with actual background color
-    ctx.fillStyle = `hsl(${bgColor})`;
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, width, height);
 
     // Price to Y coordinate
@@ -137,7 +137,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     };
 
     // Draw grid lines
-    ctx.strokeStyle = `hsl(${borderColor})`;
+    ctx.strokeStyle = borderColor;
     ctx.lineWidth = 0.5;
 
     // Horizontal grid (price)
@@ -150,7 +150,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       ctx.stroke();
 
       // Price labels
-      ctx.fillStyle = `hsl(${mutedFgColor})`;
+      ctx.fillStyle = mutedFgColor;
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'right';
       ctx.fillText(formatPrice(price), padding.left - 5, y + 3);
@@ -166,7 +166,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       ctx.stroke();
 
       // Time labels
-      ctx.fillStyle = `hsl(${mutedFgColor})`;
+      ctx.fillStyle = mutedFgColor;
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`${Math.floor(t)}s`, x, height - 10);
@@ -179,7 +179,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
 
     // Draw the declining price curve (actual - solid primary)
     ctx.beginPath();
-    ctx.strokeStyle = `hsl(${primaryColor})`;
+    ctx.strokeStyle = primaryColor;
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -197,7 +197,7 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
     // If purchase was made, draw dotted line showing what would have happened
     if (purchaseElapsed !== null && purchaseElapsed < safeDuration) {
       ctx.beginPath();
-      ctx.strokeStyle = `hsl(${mutedFgColor})`;
+      ctx.strokeStyle = mutedFgColor;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
 
@@ -218,21 +218,25 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       // Pulsing circle effect
       ctx.beginPath();
       ctx.arc(purchaseX, purchaseY, 12, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${primaryColor}, 0.2)`;
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = primaryColor;
       ctx.fill();
+      ctx.globalAlpha = 1;
 
       ctx.beginPath();
       ctx.arc(purchaseX, purchaseY, 8, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${primaryColor}, 0.4)`;
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = primaryColor;
       ctx.fill();
+      ctx.globalAlpha = 1;
 
       ctx.beginPath();
       ctx.arc(purchaseX, purchaseY, 5, 0, Math.PI * 2);
-      ctx.fillStyle = `hsl(${primaryColor})`;
+      ctx.fillStyle = primaryColor;
       ctx.fill();
 
       // Label for purchase point
-      ctx.fillStyle = `hsl(${primaryColor})`;
+      ctx.fillStyle = primaryColor;
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText('SOLD', purchaseX + 15, purchaseY + 4);
@@ -245,24 +249,29 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
 
       // Animated glow effect
       const glowSize = 8 + Math.sin(Date.now() / 200) * 2;
+      const goldColor = '#FFB300'; // hsl(45, 100%, 50%)
 
       ctx.beginPath();
       ctx.arc(currentX, currentY, glowSize + 4, 0, Math.PI * 2);
-      ctx.fillStyle = 'hsla(45, 100%, 50%, 0.15)';
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = goldColor;
       ctx.fill();
+      ctx.globalAlpha = 1;
 
       ctx.beginPath();
       ctx.arc(currentX, currentY, glowSize, 0, Math.PI * 2);
-      ctx.fillStyle = 'hsla(45, 100%, 50%, 0.3)';
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = goldColor;
       ctx.fill();
+      ctx.globalAlpha = 1;
 
       ctx.beginPath();
       ctx.arc(currentX, currentY, 5, 0, Math.PI * 2);
-      ctx.fillStyle = 'hsl(45, 100%, 50%)';
+      ctx.fillStyle = goldColor;
       ctx.fill();
 
       // Current price label
-      ctx.fillStyle = 'hsl(45, 100%, 50%)';
+      ctx.fillStyle = goldColor;
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(formatPrice(currentPrice), currentX + 12, currentY + 4);
