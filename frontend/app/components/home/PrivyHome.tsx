@@ -122,8 +122,8 @@ export default function PrivyHome() {
       <div className="min-h-screen flex flex-col bg-background text-foreground">
         <Header address={movementAddress} />
         <main className="flex-1 container mx-auto px-4 py-6 md:px-6 md:py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <div className="lg:col-span-3 space-y-6">
               <div className="text-center mb-4">
                 <h2 className="text-2xl md:text-3xl font-bold mb-2">Intent-Based Trading</h2>
                 <p className="text-muted-foreground text-sm md:text-base">
@@ -142,7 +142,7 @@ export default function PrivyHome() {
                 />
               </div>
             </div>
-            <div className="lg:col-span-1 space-y-6">
+            <div className="lg:col-span-2 space-y-6">
               <div className="lg:hidden">
                 <ActiveIntents
                   intents={intents}

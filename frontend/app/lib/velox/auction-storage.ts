@@ -110,6 +110,19 @@ export function cleanupOldAuctionEntries(): void {
 }
 
 /**
+ * Clear all auction storage data (useful after contract redeployment)
+ */
+export function clearAllAuctionStorage(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(AUCTION_STORAGE_KEY);
+    console.log('[Velox] Cleared all auction storage');
+  } catch {
+    console.warn('[Velox] Failed to clear auction storage');
+  }
+}
+
+/**
  * Check if an intent has an associated sealed-bid auction on-chain
  */
 export async function checkSealedBidAuction(intentId: bigint): Promise<StoredAuctionInfo | null> {
