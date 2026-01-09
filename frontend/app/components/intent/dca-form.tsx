@@ -6,6 +6,7 @@ import { Card } from '@/app/components/ui/card';
 import { Label } from '@/app/components/ui/label';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
+import { SlippageSelector } from './slippage-selector';
 import { TransactionConfirmDialog } from './transaction-confirm-dialog';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
@@ -33,6 +34,8 @@ const FREQUENCY_OPTIONS = [
   { label: 'Monthly', value: 30, seconds: 30 * 24 * 60 * 60 },
 ];
 
+const DEFAULT_SLIPPAGE = 0.5;
+
 export function DCAForm({ onSuccess, onError }: DCAFormProps) {
   const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
   const txConfirm = useTransactionConfirm();
@@ -42,6 +45,7 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
   const [amountPerPeriod, setAmountPerPeriod] = useState('');
   const [totalPeriods, setTotalPeriods] = useState(12);
   const [intervalDays, setIntervalDays] = useState(7);
+  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const [inputBalance, setInputBalance] = useState<string>('');
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -266,6 +270,13 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
             <span>Immediately after creation</span>
           </div>
         </div>
+
+        {/* Slippage Selector */}
+        <SlippageSelector
+          value={slippage}
+          onChange={setSlippage}
+          disabled={isLoading}
+        />
 
         {/* Info Box */}
         <div className="p-3 bg-primary/10 text-primary rounded-lg text-sm">

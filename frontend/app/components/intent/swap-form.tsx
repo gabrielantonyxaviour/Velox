@@ -5,6 +5,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
+import { SlippageSelector } from './slippage-selector';
 import { TransactionConfirmDialog } from './transaction-confirm-dialog';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
@@ -37,6 +38,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
   const [inputAmount, setInputAmount] = useState('');
   const [minOutputAmount, setMinOutputAmount] = useState('');
   const [deadline, setDeadline] = useState(DEADLINE_OPTIONS[1].value); // Default 10m
+  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const [inputBalance, setInputBalance] = useState<string>('');
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
   const [exchangeRate, setExchangeRate] = useState<number>(0);
@@ -92,7 +94,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
           parseFloat(inputAmount),
           inputToken.symbol,
           outputToken.symbol,
-          DEFAULT_SLIPPAGE
+          slippage
         );
 
         setExchangeRate(result.exchangeRate);
@@ -113,7 +115,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
     // Debounce the quote fetch
     const timeoutId = setTimeout(fetchQuote, 300);
     return () => clearTimeout(timeoutId);
-  }, [inputAmount, inputToken, outputToken]);
+  }, [inputAmount, inputToken, outputToken, slippage]);
 
   const handleSwapTokens = () => {
     const temp = inputToken;
@@ -151,7 +153,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
       inputAmount,
       minOutputAmount || '0',
       deadline,
-      DEFAULT_SLIPPAGE
+      slippage
     );
     txConfirm.openConfirmation(details);
   };
@@ -307,10 +309,12 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
           </div>
         </div>
 
-        {/* Slippage Info */}
-        <div className="text-xs text-muted-foreground">
-          Slippage tolerance: {DEFAULT_SLIPPAGE}%
-        </div>
+        {/* Slippage Selector */}
+        <SlippageSelector
+          value={slippage}
+          onChange={setSlippage}
+          disabled={isLoading}
+        />
 
         {/* Error Display */}
         {error && (
