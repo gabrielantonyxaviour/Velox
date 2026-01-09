@@ -50,10 +50,11 @@ export default function PrivyHome() {
           walletContext.signRawHash,
           walletContext.publicKeyHex
         );
-      } else if (walletContext.signAndSubmitTransaction) {
+      } else if (walletContext.signTransaction && walletContext.signAndSubmitTransaction) {
         txHash = await cancelIntentNative(
           walletContext.walletAddress,
           intentId,
+          walletContext.signTransaction,
           walletContext.signAndSubmitTransaction
         );
       } else {

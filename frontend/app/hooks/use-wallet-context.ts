@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import { SignRawHashFunction } from '@/app/lib/velox/transactions';
+import { SignRawHashFunction, SignTransactionFunction } from '@/app/lib/velox/transactions';
 
 export interface WalletContext {
   walletAddress: string | null;
@@ -11,6 +11,7 @@ export interface WalletContext {
   signRawHash: SignRawHashFunction | null;
   publicKeyHex: string | null;
   signAndSubmitTransaction: ((payload: unknown) => Promise<{ hash: string }>) | null;
+  signTransaction: SignTransactionFunction | null;
 }
 
 const defaultWalletContext: WalletContext = {
@@ -21,6 +22,7 @@ const defaultWalletContext: WalletContext = {
   signRawHash: null,
   publicKeyHex: null,
   signAndSubmitTransaction: null,
+  signTransaction: null,
 };
 
 // Create a context that can be provided by parent components
@@ -31,5 +33,5 @@ export function useWalletContext(): WalletContext {
   return useContext(WalletContextContext);
 }
 
-// Re-export the type for convenience
-export type { SignRawHashFunction };
+// Re-export the types for convenience
+export type { SignRawHashFunction, SignTransactionFunction };

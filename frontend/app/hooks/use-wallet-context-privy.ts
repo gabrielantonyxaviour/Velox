@@ -4,7 +4,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useSignRawHash } from '@privy-io/react-auth/extended-chains';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { useMemo } from 'react';
-import { SignRawHashFunction } from '@/app/lib/velox/transactions';
+import { SignRawHashFunction, SignTransactionFunction } from '@/app/lib/velox/transactions';
 
 export interface WalletContext {
   walletAddress: string | null;
@@ -14,12 +14,13 @@ export interface WalletContext {
   signRawHash: SignRawHashFunction | null;
   publicKeyHex: string | null;
   signAndSubmitTransaction: ((payload: unknown) => Promise<{ hash: string }>) | null;
+  signTransaction: SignTransactionFunction | null;
 }
 
 export function useWalletContextPrivy(): WalletContext {
   const { ready, authenticated, user } = usePrivy();
   const { signRawHash: privySignRawHash } = useSignRawHash();
-  const { account, connected, signAndSubmitTransaction: nativeSignAndSubmit } = useWallet();
+  const { account, connected, signAndSubmitTransaction: nativeSignAndSubmit, signTransaction: nativeSignTransaction } = useWallet();
 
   return useMemo(() => {
     const privyWallet = user?.linkedAccounts?.find(
@@ -51,6 +52,9 @@ export function useWalletContextPrivy(): WalletContext {
       signAndSubmitTransaction: !isPrivy && isNativeConnected
         ? (nativeSignAndSubmit as (payload: unknown) => Promise<{ hash: string }>)
         : null,
+      signTransaction: !isPrivy && isNativeConnected
+        ? (nativeSignTransaction as SignTransactionFunction)
+        : null,
     };
-  }, [ready, authenticated, user, connected, account, privySignRawHash, nativeSignAndSubmit]);
+  }, [ready, authenticated, user, connected, account, privySignRawHash, nativeSignAndSubmit, nativeSignTransaction]);
 }

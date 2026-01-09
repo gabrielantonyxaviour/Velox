@@ -1,17 +1,22 @@
 /**
  * Shinami Gas Station Client for Velox
  * Provides gasless transaction sponsorship for user intent submissions
- * Uses server-side API route to keep SHINAMI_KEY secret
+ * Uses the recommended flow: Sign first, then sponsor+submit on backend
+ *
+ * Flow:
+ * 1. Build feePayer transaction on frontend (with 0x0 placeholder)
+ * 2. User signs the transaction FIRST
+ * 3. Send signed tx to backend
+ * 4. Backend calls gas_sponsorAndSubmitSignedTransaction (sponsors, sets fee payer, submits)
  */
 
 import {
+  AccountAuthenticator,
   AccountAuthenticatorEd25519,
   Ed25519PublicKey,
   Ed25519Signature,
   generateSigningMessageForTransaction,
   SimpleTransaction,
-  AccountAuthenticator,
-  Deserializer,
 } from '@aptos-labs/ts-sdk';
 import { aptos, toHex } from '../aptos';
 
@@ -21,12 +26,9 @@ export interface SignRawHashFunction {
   }>;
 }
 
-export interface SponsorshipResult {
+export interface SponsorAndSubmitResult {
   success: boolean;
-  feePayer?: {
-    address: string;
-    signature: number[];
-  };
+  hash?: string;
   error?: string;
 }
 
@@ -53,21 +55,24 @@ export async function isSponsorshipEnabled(): Promise<boolean> {
 }
 
 /**
- * Request transaction sponsorship via server-side API route
+ * Send signed transaction to backend for sponsorship and submission
+ * Backend uses gas_sponsorAndSubmitSignedTransaction
  */
-export async function sponsorTransaction(
-  rawTransaction: SimpleTransaction
-): Promise<SponsorshipResult> {
+async function sponsorAndSubmitSignedTransaction(
+  rawTransaction: SimpleTransaction,
+  senderAuthenticator: AccountAuthenticator
+): Promise<SponsorAndSubmitResult> {
   try {
-    // Serialize the raw transaction to hex
-    const rawTxHex = Buffer.from(rawTransaction.bcsToBytes()).toString('hex');
+    // Serialize transaction and authenticator to hex
+    const rawTxHex = rawTransaction.bcsToHex().toString();
+    const senderAuthenticatorHex = senderAuthenticator.bcsToHex().toString();
 
     const response = await fetch('/api/sponsor', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ rawTxHex }),
+      body: JSON.stringify({ rawTxHex, senderAuthenticatorHex }),
     });
 
     const result = await response.json();
@@ -75,13 +80,13 @@ export async function sponsorTransaction(
     if (!result.success) {
       return {
         success: false,
-        error: result.error || 'Sponsorship failed',
+        error: result.error || 'Sponsorship and submission failed',
       };
     }
 
     return {
       success: true,
-      feePayer: result.feePayer,
+      hash: result.hash,
     };
   } catch (error) {
     return {
@@ -92,8 +97,13 @@ export async function sponsorTransaction(
 }
 
 /**
- * Build, sponsor, sign, and submit a transaction with Shinami Gas Station
- * This is the main function for gasless intent submissions
+ * Build, sign, sponsor, and submit a transaction with Shinami Gas Station
+ * For Privy wallets using signRawHash
+ *
+ * Follows recommended flow:
+ * 1. Build feePayer tx (with 0x0 placeholder)
+ * 2. User signs FIRST
+ * 3. Backend sponsors and submits
  */
 export async function sponsoredSubmit(
   walletAddress: string,
@@ -102,7 +112,7 @@ export async function sponsoredSubmit(
   publicKeyHex: string,
   signRawHash: SignRawHashFunction
 ): Promise<string> {
-  // 1. Build the transaction with fee payer enabled
+  // 1. Build the transaction with fee payer enabled (uses 0x0 placeholder)
   const rawTxn = await aptos.transaction.build.simple({
     sender: walletAddress,
     data: {
@@ -113,14 +123,7 @@ export async function sponsoredSubmit(
     withFeePayer: true,
   });
 
-  // 2. Request sponsorship from server-side API
-  const sponsorship = await sponsorTransaction(rawTxn);
-
-  if (!sponsorship.success || !sponsorship.feePayer) {
-    throw new Error(sponsorship.error || 'Failed to get transaction sponsorship');
-  }
-
-  // 3. Generate signing message and get user signature
+  // 2. Generate signing message and get user signature FIRST
   const message = generateSigningMessageForTransaction(rawTxn);
   const { signature: rawSignature } = await signRawHash({
     address: walletAddress,
@@ -128,7 +131,7 @@ export async function sponsoredSubmit(
     hash: `0x${toHex(message)}`,
   });
 
-  // 4. Create sender authenticator
+  // 3. Create sender authenticator
   let cleanPublicKey = publicKeyHex.startsWith('0x') ? publicKeyHex.slice(2) : publicKeyHex;
   if (cleanPublicKey.length === 66) {
     cleanPublicKey = cleanPublicKey.slice(2);
@@ -136,41 +139,43 @@ export async function sponsoredSubmit(
 
   const senderAuthenticator = new AccountAuthenticatorEd25519(
     new Ed25519PublicKey(cleanPublicKey),
-    new Ed25519Signature(rawSignature.startsWith('0x') ? rawSignature.slice(2) : rawSignature)
+    new Ed25519Signature(
+      rawSignature.startsWith('0x') ? rawSignature.slice(2) : rawSignature
+    )
   );
 
-  // 5. Create fee payer authenticator from Shinami's signature
-  const feePayerSignatureBytes = new Uint8Array(sponsorship.feePayer.signature);
-  const feePayerAuthenticator = AccountAuthenticator.deserialize(
-    new Deserializer(feePayerSignatureBytes)
-  );
+  // 4. Send to backend for sponsorship and submission
+  const result = await sponsorAndSubmitSignedTransaction(rawTxn, senderAuthenticator);
 
-  // 6. Submit the sponsored transaction
-  const committedTx = await aptos.transaction.submit.simple({
-    transaction: rawTxn,
-    senderAuthenticator,
-    feePayerAuthenticator,
-  });
+  if (!result.success || !result.hash) {
+    throw new Error(result.error || 'Sponsored submission failed');
+  }
 
-  // 7. Wait for confirmation
-  const executed = await aptos.waitForTransaction({ transactionHash: committedTx.hash });
+  // 5. Wait for transaction confirmation
+  const executed = await aptos.waitForTransaction({ transactionHash: result.hash });
   if (!executed.success) {
     throw new Error('Sponsored transaction failed on-chain');
   }
 
-  return committedTx.hash;
+  return result.hash;
 }
 
 /**
- * Sponsored submit for native wallet adapters (Nightly, etc.)
+ * Build, sign, sponsor, and submit a transaction with Shinami Gas Station
+ * For native wallets (Nightly, Petra, etc.) using wallet adapter signTransaction
+ *
+ * Follows recommended flow:
+ * 1. Build feePayer tx (with 0x0 placeholder)
+ * 2. User signs FIRST via wallet adapter
+ * 3. Backend sponsors and submits
  */
 export async function sponsoredSubmitNative(
   walletAddress: string,
   functionId: `${string}::${string}::${string}`,
   args: (string | number | bigint | boolean)[],
-  signTransaction: (transaction: SimpleTransaction) => Promise<AccountAuthenticator>
+  signTransaction: (args: { transactionOrPayload: SimpleTransaction; asFeePayer?: boolean }) => Promise<{ authenticator: AccountAuthenticator; rawTransaction: Uint8Array }>
 ): Promise<string> {
-  // 1. Build the transaction with fee payer
+  // 1. Build the transaction with fee payer enabled (uses 0x0 placeholder)
   const rawTxn = await aptos.transaction.build.simple({
     sender: walletAddress,
     data: {
@@ -181,34 +186,21 @@ export async function sponsoredSubmitNative(
     withFeePayer: true,
   });
 
-  // 2. Request sponsorship from server-side API
-  const sponsorship = await sponsorTransaction(rawTxn);
+  // 2. Get user signature FIRST via wallet adapter
+  const { authenticator: senderAuthenticator } = await signTransaction({ transactionOrPayload: rawTxn });
 
-  if (!sponsorship.success || !sponsorship.feePayer) {
-    throw new Error(sponsorship.error || 'Failed to get transaction sponsorship');
+  // 3. Send to backend for sponsorship and submission
+  const result = await sponsorAndSubmitSignedTransaction(rawTxn, senderAuthenticator);
+
+  if (!result.success || !result.hash) {
+    throw new Error(result.error || 'Sponsored submission failed');
   }
 
-  // 3. Get user signature via wallet adapter
-  const senderAuthenticator = await signTransaction(rawTxn);
-
-  // 4. Create fee payer authenticator from Shinami's signature
-  const feePayerSignatureBytes = new Uint8Array(sponsorship.feePayer.signature);
-  const feePayerAuthenticator = AccountAuthenticator.deserialize(
-    new Deserializer(feePayerSignatureBytes)
-  );
-
-  // 5. Submit the sponsored transaction
-  const committedTx = await aptos.transaction.submit.simple({
-    transaction: rawTxn,
-    senderAuthenticator,
-    feePayerAuthenticator,
-  });
-
-  // 6. Wait for confirmation
-  const executed = await aptos.waitForTransaction({ transactionHash: committedTx.hash });
+  // 4. Wait for transaction confirmation
+  const executed = await aptos.waitForTransaction({ transactionHash: result.hash });
   if (!executed.success) {
     throw new Error('Sponsored transaction failed on-chain');
   }
 
-  return committedTx.hash;
+  return result.hash;
 }

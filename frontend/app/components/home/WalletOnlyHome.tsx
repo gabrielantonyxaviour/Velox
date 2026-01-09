@@ -32,13 +32,14 @@ export default function WalletOnlyHome() {
   }, []);
 
   const handleCancelIntent = useCallback(async (intentId: bigint) => {
-    if (!walletContext.walletAddress || !walletContext.signAndSubmitTransaction) return;
+    if (!walletContext.walletAddress || !walletContext.signTransaction || !walletContext.signAndSubmitTransaction) return;
 
     setCancellingId(intentId);
     try {
       const txHash = await cancelIntentNative(
         walletContext.walletAddress,
         intentId,
+        walletContext.signTransaction,
         walletContext.signAndSubmitTransaction
       );
       showTxSuccess('Intent cancelled', txHash);

@@ -42,7 +42,7 @@ const SEALED_BID_DURATION_OPTIONS = [
 const DEFAULT_SLIPPAGE = 0.5;
 
 export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
-  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
   const [outputToken, setOutputToken] = useState<Token | null>(null);
@@ -180,7 +180,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
             signRawHash,
             publicKeyHex
           );
-        } else if (signAndSubmitTransaction) {
+        } else if (signTransaction && signAndSubmitTransaction) {
           txHash = await submitSwapWithAuctionNative(
             walletAddress,
             inputToken.address,
@@ -189,6 +189,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
             minAmountOut,
             deadlineTimestamp,
             sealedBidDuration,
+            signTransaction,
             signAndSubmitTransaction
           );
         } else {
@@ -210,7 +211,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
             signRawHash,
             publicKeyHex
           );
-        } else if (signAndSubmitTransaction) {
+        } else if (signTransaction && signAndSubmitTransaction) {
           txHash = await submitSwapWithDutchAuctionNative(
             walletAddress,
             inputToken.address,
@@ -220,6 +221,7 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
             startPrice,
             deadlineTimestamp,
             dutchDuration,
+            signTransaction,
             signAndSubmitTransaction
           );
         } else {

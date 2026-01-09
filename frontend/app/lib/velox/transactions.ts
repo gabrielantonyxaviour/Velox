@@ -1,12 +1,14 @@
 import {
   AccountAuthenticatorEd25519,
+  AccountAuthenticator,
   Ed25519PublicKey,
   Ed25519Signature,
   generateSigningMessageForTransaction,
+  SimpleTransaction,
 } from '@aptos-labs/ts-sdk';
 import { aptos, VELOX_ADDRESS, toHex } from '../aptos';
 import { DutchAuction } from './types';
-import { sponsoredSubmit, isSponsorshipEnabled } from '../shinami';
+import { sponsoredSubmit, sponsoredSubmitNative, isSponsorshipEnabled } from '../shinami';
 import { storeAuctionIntent } from './auction-storage';
 
 // Helper to extract intent ID from transaction events
@@ -34,6 +36,11 @@ export interface SignRawHashFunction {
     signature: string;
   }>;
 }
+
+export type SignTransactionFunction = (args: {
+  transactionOrPayload: SimpleTransaction;
+  asFeePayer?: boolean;
+}) => Promise<{ authenticator: AccountAuthenticator; rawTransaction: Uint8Array }>;
 
 // Helper to build and sign transactions with Privy (user pays gas - fallback)
 async function signAndSubmitWithPrivy(
@@ -82,8 +89,31 @@ async function signAndSubmitWithPrivy(
   return committedTx.hash;
 }
 
+// Helper to sign and submit with native wallet (user pays gas - fallback)
+async function signAndSubmitNative(
+  walletAddress: string,
+  functionId: `${string}::${string}::${string}`,
+  args: (string | number | bigint | boolean)[],
+  signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
+): Promise<string> {
+  const response = await signAndSubmitTransaction({
+    sender: walletAddress,
+    data: {
+      function: functionId,
+      functionArguments: args,
+    },
+  });
+
+  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
+  if (!executed.success) {
+    throw new Error('Transaction failed');
+  }
+
+  return response.hash;
+}
+
 /**
- * Smart transaction submission - uses Shinami Gas Station if available,
+ * Smart transaction submission for Privy - uses Shinami Gas Station if available,
  * otherwise falls back to user-paid gas
  */
 async function smartSubmitWithPrivy(
@@ -97,7 +127,7 @@ async function smartSubmitWithPrivy(
   const sponsorshipAvailable = await isSponsorshipEnabled();
   if (sponsorshipAvailable) {
     try {
-      console.log('[Velox] Using Shinami Gas Station for sponsored transaction');
+      console.log('[Velox] Using Shinami Gas Station for sponsored transaction (Privy)');
       return await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
     } catch (error) {
       console.warn('[Velox] Sponsored submission failed, falling back to user-paid:', error);
@@ -106,8 +136,36 @@ async function smartSubmitWithPrivy(
   }
 
   // Fallback to user-paid gas
-  console.log('[Velox] Using user-paid gas transaction');
+  console.log('[Velox] Using user-paid gas transaction (Privy)');
   return signAndSubmitWithPrivy(walletAddress, functionId, args, publicKeyHex, signRawHash);
+}
+
+/**
+ * Smart transaction submission for native wallets - uses Shinami Gas Station if available,
+ * otherwise falls back to user-paid gas
+ */
+async function smartSubmitNative(
+  walletAddress: string,
+  functionId: `${string}::${string}::${string}`,
+  args: (string | number | bigint | boolean)[],
+  signTransaction: SignTransactionFunction,
+  signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
+): Promise<string> {
+  // Try sponsored submission first if enabled
+  const sponsorshipAvailable = await isSponsorshipEnabled();
+  if (sponsorshipAvailable) {
+    try {
+      console.log('[Velox] Using Shinami Gas Station for sponsored transaction (Native)');
+      return await sponsoredSubmitNative(walletAddress, functionId, args, signTransaction);
+    } catch (error) {
+      console.warn('[Velox] Sponsored submission failed, falling back to user-paid:', error);
+      // Fall through to user-paid submission
+    }
+  }
+
+  // Fallback to user-paid gas
+  console.log('[Velox] Using user-paid gas transaction (Native)');
+  return signAndSubmitNative(walletAddress, functionId, args, signAndSubmitTransaction);
 }
 
 // ============ Swap Intent ============
@@ -138,29 +196,16 @@ export async function submitSwapIntentNative(
   amountIn: bigint,
   minAmountOut: bigint,
   deadline: number,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::submission::submit_swap`,
-      functionArguments: [
-        VELOX_ADDRESS,
-        inputToken,
-        outputToken,
-        amountIn.toString(),
-        minAmountOut.toString(),
-        deadline,
-      ],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::submission::submit_swap`,
+    [VELOX_ADDRESS, inputToken, outputToken, amountIn.toString(), minAmountOut.toString(), deadline],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
 
 // ============ Limit Order Intent ============
@@ -201,30 +246,24 @@ export async function submitLimitOrderIntentNative(
   limitPrice: bigint,
   expiry: number,
   partialFillAllowed: boolean,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::submission::submit_limit_order`,
-      functionArguments: [
-        VELOX_ADDRESS,
-        inputToken,
-        outputToken,
-        amountIn.toString(),
-        limitPrice.toString(),
-        expiry,
-        partialFillAllowed,
-      ],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::submission::submit_limit_order`,
+    [
+      VELOX_ADDRESS,
+      inputToken,
+      outputToken,
+      amountIn.toString(),
+      limitPrice.toString(),
+      expiry,
+      partialFillAllowed,
+    ],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
 
 // ============ TWAP Intent ============
@@ -269,32 +308,26 @@ export async function submitTWAPIntentNative(
   intervalSeconds: number,
   maxSlippageBps: number,
   startTime: number,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::submission::submit_twap`,
-      functionArguments: [
-        VELOX_ADDRESS,
-        VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
-        inputToken,
-        outputToken,
-        totalAmount.toString(),
-        numChunks,
-        intervalSeconds,
-        maxSlippageBps,
-        startTime,
-      ],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::submission::submit_twap`,
+    [
+      VELOX_ADDRESS,
+      VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
+      inputToken,
+      outputToken,
+      totalAmount.toString(),
+      numChunks,
+      intervalSeconds,
+      maxSlippageBps,
+      startTime,
+    ],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
 
 // ============ DCA Intent ============
@@ -333,30 +366,24 @@ export async function submitDCAIntentNative(
   amountPerPeriod: bigint,
   totalPeriods: number,
   intervalSeconds: number,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::submission::submit_dca`,
-      functionArguments: [
-        VELOX_ADDRESS,
-        VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
-        inputToken,
-        outputToken,
-        amountPerPeriod.toString(),
-        totalPeriods,
-        intervalSeconds,
-      ],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::submission::submit_dca`,
+    [
+      VELOX_ADDRESS,
+      VELOX_ADDRESS, // scheduled_registry_addr (same as registry for MVP)
+      inputToken,
+      outputToken,
+      amountPerPeriod.toString(),
+      totalPeriods,
+      intervalSeconds,
+    ],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
 
 // ============ Swap with Auction Intent ============
@@ -406,37 +433,33 @@ export async function submitSwapWithAuctionNative(
   minAmountOut: bigint,
   deadline: number,
   auctionDuration: number,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::submission::submit_swap_with_auction`,
-      functionArguments: [
-        VELOX_ADDRESS,
-        VELOX_ADDRESS, // auction_state_addr (same as registry for MVP)
-        inputToken,
-        outputToken,
-        amountIn.toString(),
-        minAmountOut.toString(),
-        deadline,
-        auctionDuration,
-      ],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
+  const txHash = await smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::submission::submit_swap_with_auction`,
+    [
+      VELOX_ADDRESS,
+      VELOX_ADDRESS, // auction_state_addr (same as registry for MVP)
+      inputToken,
+      outputToken,
+      amountIn.toString(),
+      minAmountOut.toString(),
+      deadline,
+      auctionDuration,
+    ],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 
   // Extract intent ID and store auction info
-  const intentId = await extractIntentIdFromTx(response.hash);
+  const intentId = await extractIntentIdFromTx(txHash);
   if (intentId !== null) {
     storeAuctionIntent(intentId, 'sealed-bid', { duration: auctionDuration });
   }
 
-  return response.hash;
+  return txHash;
 }
 
 // ============ Swap with Dutch Auction Intent ============
@@ -493,33 +516,29 @@ export async function submitSwapWithDutchAuctionNative(
   startPrice: bigint,
   deadline: number,
   auctionDuration: number,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::submission::submit_swap_with_dutch_auction`,
-      functionArguments: [
-        VELOX_ADDRESS,
-        VELOX_ADDRESS, // auction_state_addr
-        inputToken,
-        outputToken,
-        amountIn.toString(),
-        minAmountOut.toString(),
-        startPrice.toString(),
-        deadline,
-        auctionDuration,
-      ],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
+  const txHash = await smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::submission::submit_swap_with_dutch_auction`,
+    [
+      VELOX_ADDRESS,
+      VELOX_ADDRESS, // auction_state_addr
+      inputToken,
+      outputToken,
+      amountIn.toString(),
+      minAmountOut.toString(),
+      startPrice.toString(),
+      deadline,
+      auctionDuration,
+    ],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 
   // Extract intent ID and store auction info
-  const intentId = await extractIntentIdFromTx(response.hash);
+  const intentId = await extractIntentIdFromTx(txHash);
   if (intentId !== null) {
     storeAuctionIntent(intentId, 'dutch', {
       duration: auctionDuration,
@@ -528,7 +547,7 @@ export async function submitSwapWithDutchAuctionNative(
     });
   }
 
-  return response.hash;
+  return txHash;
 }
 
 // ============ Dutch Auction View Functions ============
@@ -590,20 +609,14 @@ export async function cancelIntent(
 export async function cancelIntentNative(
   walletAddress: string,
   intentId: bigint,
+  signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
-  const response = await signAndSubmitTransaction({
-    sender: walletAddress,
-    data: {
-      function: `${VELOX_ADDRESS}::submission::cancel_intent`,
-      functionArguments: [VELOX_ADDRESS, intentId.toString()],
-    },
-  });
-
-  const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
-  if (!executed.success) {
-    throw new Error('Transaction failed');
-  }
-
-  return response.hash;
+  return smartSubmitNative(
+    walletAddress,
+    `${VELOX_ADDRESS}::submission::cancel_intent`,
+    [VELOX_ADDRESS, intentId.toString()],
+    signTransaction,
+    signAndSubmitTransaction
+  );
 }
