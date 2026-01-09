@@ -141,3 +141,44 @@ export function createTWAPDetails(
     startTime,
   };
 }
+
+export function createSealedBidAuctionDetails(
+  inputToken: Token,
+  outputToken: Token,
+  inputAmount: string,
+  minOutputAmount: string,
+  auctionDuration: number,
+  deadline: number
+): TransactionDetails {
+  return {
+    type: 'auction_sealed_bid',
+    inputToken,
+    outputToken,
+    inputAmount,
+    outputAmount: minOutputAmount,
+    auctionDuration,
+    deadline,
+  };
+}
+
+export function createDutchAuctionDetails(
+  inputToken: Token,
+  outputToken: Token,
+  inputAmount: string,
+  minOutputAmount: string,
+  dutchStartPrice: string,
+  auctionDuration: number,
+  deadline: number
+): TransactionDetails {
+  return {
+    type: 'auction_dutch',
+    inputToken,
+    outputToken,
+    inputAmount,
+    outputAmount: minOutputAmount,
+    dutchStartPrice,
+    dutchEndPrice: minOutputAmount,
+    auctionDuration,
+    deadline,
+  };
+}

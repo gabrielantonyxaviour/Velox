@@ -6,6 +6,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
+import { SimpleConfirmDialog, SimpleTransactionDetails } from '@/app/components/ui/simple-confirm-dialog';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
 import { useSolverInfo } from '@/app/hooks/use-solvers';
 import { registerSolver, registerSolverNative } from './solver-transactions';
@@ -65,6 +66,10 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
   const [success, setSuccess] = useState(false);
   const [step, setStep] = useState<'form' | 'uploading' | 'registering'>('form');
 
+  // Confirmation dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDetails, setConfirmDetails] = useState<SimpleTransactionDetails | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (isLoadingSolver) return null;
@@ -114,7 +119,27 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
     );
   };
 
-  const handleRegister = async () => {
+  const handleRegisterClick = () => {
+    if (!isFormValid()) return;
+
+    setConfirmDetails({
+      title: 'Register as Solver',
+      description: 'Confirm registration to become a Velox solver.',
+      items: [
+        { label: 'Solver Name', value: formData.name.trim() },
+        { label: 'Stake Amount', value: `${formData.stake} MOVE` },
+        { label: 'Initial Reputation', value: '50%' },
+      ],
+      warningMessage: 'You will have a 7-day unstaking cooldown period.',
+    });
+    setConfirmOpen(true);
+  };
+
+  const handleCancelConfirm = () => {
+    setConfirmOpen(false);
+  };
+
+  const handleConfirmRegister = async () => {
     if (!walletAddress || !isFormValid()) return;
 
     setIsLoading(true);
@@ -170,6 +195,7 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
 
       setSuccess(true);
       setStep('form');
+      setConfirmOpen(false);
       onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to register');
@@ -364,7 +390,7 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
         )}
 
         <Button
-          onClick={handleRegister}
+          onClick={handleRegisterClick}
           disabled={isLoading || !isFormValid()}
           className="w-full"
         >
@@ -382,6 +408,16 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
           )}
         </Button>
       </div>
+
+      <SimpleConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        details={confirmDetails}
+        onConfirm={handleConfirmRegister}
+        onCancel={handleCancelConfirm}
+        isLoading={isLoading}
+        confirmText="Register"
+      />
     </Card>
   );
 }
