@@ -101,8 +101,8 @@ export function DutchAuctionPreview({
 
     // Draw the price curve gradient fill
     const gradient = ctx.createLinearGradient(padding.left, 0, width - padding.right, 0);
-    gradient.addColorStop(0, 'hsla(35, 92%, 65%, 0.3)');
-    gradient.addColorStop(1, 'hsla(35, 92%, 65%, 0.05)');
+    gradient.addColorStop(0, 'hsla(30, 52%, 52%, 0.3)');
+    gradient.addColorStop(1, 'hsla(30, 52%, 52%, 0.05)');
 
     ctx.beginPath();
     ctx.moveTo(padding.left, priceToY(startPrice));
@@ -118,7 +118,7 @@ export function DutchAuctionPreview({
 
     // Draw the main price curve
     ctx.beginPath();
-    ctx.strokeStyle = 'hsl(35, 92%, 65%)'; // amber color
+    ctx.strokeStyle = 'hsl(30, 52%, 52%)'; // primary color
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -133,13 +133,13 @@ export function DutchAuctionPreview({
     // Draw start point
     ctx.beginPath();
     ctx.arc(padding.left, priceToY(startPrice), 4, 0, Math.PI * 2);
-    ctx.fillStyle = 'hsl(35, 92%, 65%)';
+    ctx.fillStyle = 'hsl(30, 52%, 52%)';
     ctx.fill();
 
     // Draw end point
     ctx.beginPath();
     ctx.arc(timeToX(duration), priceToY(endPrice), 4, 0, Math.PI * 2);
-    ctx.fillStyle = 'hsl(35, 92%, 65%)';
+    ctx.fillStyle = 'hsl(30, 52%, 52%)';
     ctx.fill();
 
   }, [startPrice, endPrice, duration]);
@@ -151,9 +151,9 @@ export function DutchAuctionPreview({
   const priceDropPercent = ((startPrice - endPrice) / startPrice * 100).toFixed(0);
 
   return (
-    <div className="space-y-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+    <div className="space-y-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs text-amber-400">
+        <div className="flex items-center gap-2 text-xs text-primary">
           <TrendingDown className="h-3 w-3" />
           <span>Price Curve Preview</span>
         </div>
@@ -162,7 +162,7 @@ export function DutchAuctionPreview({
         </span>
       </div>
 
-      <div className="relative rounded border border-amber-500/20 bg-background overflow-hidden">
+      <div className="relative rounded border border-primary/20 bg-background overflow-hidden">
         <canvas
           ref={canvasRef}
           className="w-full h-[100px]"
@@ -173,7 +173,7 @@ export function DutchAuctionPreview({
       <div className="flex justify-between text-xs">
         <div className="text-center">
           <span className="text-muted-foreground">Start: </span>
-          <span className="text-amber-400 font-mono">{startPrice.toFixed(4)}</span>
+          <span className="text-primary font-mono">{startPrice.toFixed(4)}</span>
         </div>
         <div className="text-center">
           <span className="text-muted-foreground">End: </span>

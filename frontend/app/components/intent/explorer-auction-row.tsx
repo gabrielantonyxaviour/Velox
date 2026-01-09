@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
-  active: 'bg-amber-500/10 text-amber-400',
+  active: 'bg-primary/10 text-primary',
   filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
@@ -359,10 +359,10 @@ export function ExplorerAuctionRow({ intent }: ExplorerAuctionRowProps) {
         <div className="space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{formatPrice(auction.startPrice)}</span>
-            <span className="text-amber-400">{currentDutchPrice ? formatPrice(currentDutchPrice) : '--'}</span>
+            <span className="text-primary">{currentDutchPrice ? formatPrice(currentDutchPrice) : '--'}</span>
             <span>{formatPrice(auction.endPrice)}</span>
           </div>
-          <div className="rounded border border-amber-500/20 overflow-hidden bg-background/50">
+          <div className="rounded border border-primary/20 overflow-hidden bg-background/50">
             <MiniDutchCurve
               startPrice={auction.startPrice}
               endPrice={auction.endPrice}
