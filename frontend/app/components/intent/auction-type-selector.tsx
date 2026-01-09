@@ -25,9 +25,6 @@ export function AuctionTypeSelector({ value, onChange }: AuctionTypeSelectorProp
         >
           <Gavel className={`h-6 w-6 mb-2 ${value === AUCTION_TYPE.SEALED_BID ? 'text-primary' : 'text-muted-foreground'}`} />
           <span className="font-medium">Sealed Bid</span>
-          <span className="text-xs text-muted-foreground text-center mt-1">
-            Best offer wins
-          </span>
         </button>
 
         <button
@@ -35,15 +32,12 @@ export function AuctionTypeSelector({ value, onChange }: AuctionTypeSelectorProp
           onClick={() => onChange(AUCTION_TYPE.DUTCH)}
           className={`flex flex-col items-center justify-center rounded-lg border-2 p-4 cursor-pointer transition-colors ${
             value === AUCTION_TYPE.DUTCH
-              ? 'border-amber-500 bg-amber-500/10'
+              ? 'border-primary bg-primary/10'
               : 'border-border bg-muted/50 hover:bg-muted'
           }`}
         >
-          <Clock className={`h-6 w-6 mb-2 ${value === AUCTION_TYPE.DUTCH ? 'text-amber-400' : 'text-muted-foreground'}`} />
+          <Clock className={`h-6 w-6 mb-2 ${value === AUCTION_TYPE.DUTCH ? 'text-primary' : 'text-muted-foreground'}`} />
           <span className="font-medium">Dutch</span>
-          <span className="text-xs text-muted-foreground text-center mt-1">
-            First taker wins
-          </span>
         </button>
       </div>
     </div>

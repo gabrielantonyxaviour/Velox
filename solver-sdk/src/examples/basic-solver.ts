@@ -262,7 +262,7 @@ async function handleTWAPIntent(solver: VeloxSolver, record: IntentRecord): Prom
   }
 
   // Calculate chunk amount
-  const chunkAmount = (intent.totalAmount ?? 0n) / BigInt(intent.numChunks ?? 1);
+  const chunkAmount = (intent.totalAmount ?? BigInt(0)) / BigInt(intent.numChunks ?? 1);
 
   // Find best route for this chunk
   console.log('Finding best route for TWAP chunk...');

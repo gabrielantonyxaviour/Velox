@@ -34,8 +34,8 @@ export function DutchParamsInput({
   const startPrice = (Number(basePrice) * startPriceMultiplier) / 100;
 
   return (
-    <div className="space-y-4 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
-      <div className="text-sm font-medium text-amber-400 flex items-center gap-2">
+    <div className="space-y-4 p-4 rounded-lg bg-primary/5 border border-primary/20">
+      <div className="text-sm font-medium text-primary flex items-center gap-2">
         Dutch Auction Settings
       </div>
 
@@ -55,7 +55,7 @@ export function DutchParamsInput({
               onClick={() => onStartPriceChange(option.value)}
               className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                 startPriceMultiplier === option.value
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50'
+                  ? 'bg-primary/20 text-primary border border-primary/50'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
@@ -79,7 +79,7 @@ export function DutchParamsInput({
               onClick={() => onDurationChange(option.value)}
               className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                 duration === option.value
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50'
+                  ? 'bg-primary/20 text-primary border border-primary/50'
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
@@ -90,10 +90,10 @@ export function DutchParamsInput({
       </div>
 
       {/* Price Preview */}
-      <div className="pt-2 border-t border-amber-500/20">
+      <div className="pt-2 border-t border-primary/20">
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Start Price:</span>
-          <span className="text-amber-400 font-mono">
+          <span className="text-primary font-mono">
             {(startPrice / 1e8).toFixed(4)}
           </span>
         </div>
