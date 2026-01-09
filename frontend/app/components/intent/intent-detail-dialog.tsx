@@ -43,7 +43,7 @@ const TYPE_COLORS: Record<IntentType, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  active: 'bg-amber-500/10 text-amber-400',
+  active: 'bg-primary/10 text-primary',
   filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
