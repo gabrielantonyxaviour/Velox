@@ -57,3 +57,11 @@ export {
   getProtocolFeeBps,
   getSolverFeeBps,
 } from './contract-reads';
+
+// Query Keys for caching
+export {
+  veloxKeys,
+  getIntentInvalidationKeys,
+  getSolverInvalidationKeys,
+  getUserInvalidationKeys,
+} from './queryKeys';
