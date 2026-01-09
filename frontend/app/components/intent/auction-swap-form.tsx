@@ -303,15 +303,6 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
         {/* Auction Type Selector */}
         <AuctionTypeSelector value={auctionType} onChange={setAuctionType} />
 
-        {/* Info Banner */}
-        <div className="border rounded-lg p-3 bg-primary/10 border-primary/20">
-          <p className="text-sm text-primary">
-            {auctionType === AUCTION_TYPE.SEALED_BID
-              ? 'Solvers submit sealed bids. Best offer wins after auction ends.'
-              : 'Price drops from start to min. First solver to accept wins.'}
-          </p>
-        </div>
-
         {/* Token Inputs */}
         <div className="flex gap-3">
           <div className="flex-1">
