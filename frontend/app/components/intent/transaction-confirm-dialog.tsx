@@ -13,7 +13,8 @@ import { Button } from '@/app/components/ui/button';
 import { Separator } from '@/app/components/ui/separator';
 import { Token } from '@/app/constants/tokens';
 import { getProtocolFeeBps, getSolverFeeBps } from '@/app/lib/velox/contract-reads';
-import { Loader2, ArrowRight, Info } from 'lucide-react';
+import { isSponsorshipEnabled } from '@/app/lib/shinami/client';
+import { Loader2, ArrowRight, Info, Fuel, Sparkles } from 'lucide-react';
 
 export type IntentType = 'swap' | 'limit_order' | 'dca' | 'twap';
 
@@ -59,6 +60,24 @@ interface FeeBreakdown {
   isLoading: boolean;
 }
 
+interface GasInfo {
+  isSponsored: boolean;
+  estimatedGasCost: string;
+  estimatedGasUsd: string;
+  isLoading: boolean;
+}
+
+// Estimated gas units for different intent types
+const GAS_ESTIMATES: Record<IntentType, number> = {
+  swap: 5000,
+  limit_order: 6000,
+  dca: 8000,
+  twap: 8000,
+};
+
+// Approximate MOVE price in USD (could be fetched from an oracle)
+const MOVE_PRICE_USD = 0.75;
+
 function formatDeadline(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
@@ -100,16 +119,25 @@ export function TransactionConfirmDialog({
     isLoading: true,
   });
 
+  const [gasInfo, setGasInfo] = useState<GasInfo>({
+    isSponsored: false,
+    estimatedGasCost: '0',
+    estimatedGasUsd: '0',
+    isLoading: true,
+  });
+
   useEffect(() => {
     const fetchFees = async () => {
       if (!open || !details) return;
 
       setFees(prev => ({ ...prev, isLoading: true }));
+      setGasInfo(prev => ({ ...prev, isLoading: true }));
 
       try {
-        const [protocolBps, solverBps] = await Promise.all([
+        const [protocolBps, solverBps, sponsored] = await Promise.all([
           getProtocolFeeBps(),
           getSolverFeeBps(),
+          isSponsorshipEnabled(),
         ]);
 
         const inputAmountNum = parseFloat(details.inputAmount) || 0;
@@ -126,9 +154,24 @@ export function TransactionConfirmDialog({
           totalFeeAmount: totalFee.toFixed(6),
           isLoading: false,
         });
+
+        // Calculate estimated gas cost
+        const gasUnits = GAS_ESTIMATES[details.type];
+        const gasPrice = 100; // octas per gas unit (approximate)
+        const gasCostOctas = gasUnits * gasPrice;
+        const gasCostMove = gasCostOctas / 1e8;
+        const gasCostUsd = gasCostMove * MOVE_PRICE_USD;
+
+        setGasInfo({
+          isSponsored: sponsored,
+          estimatedGasCost: gasCostMove.toFixed(6),
+          estimatedGasUsd: gasCostUsd.toFixed(4),
+          isLoading: false,
+        });
       } catch (error) {
         console.error('Error fetching fees:', error);
         setFees(prev => ({ ...prev, isLoading: false }));
+        setGasInfo(prev => ({ ...prev, isLoading: false }));
       }
     };
 
@@ -273,9 +316,59 @@ export function TransactionConfirmDialog({
             )}
           </div>
 
-          {/* Network Info */}
-          <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
-            <p>Transaction will be submitted to Movement Network. Gas fees apply.</p>
+          <Separator />
+
+          {/* Gas Fee Section */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1 text-sm font-medium">
+              <Fuel className="w-4 h-4" />
+              Network Gas Fee
+            </div>
+
+            {gasInfo.isLoading ? (
+              <div className="flex items-center justify-center py-2">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Estimated Gas:</span>
+                    {gasInfo.isSponsored ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm line-through text-muted-foreground">
+                          {gasInfo.estimatedGasCost} MOVE (~${gasInfo.estimatedGasUsd})
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                          FREE
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-medium">
+                        {gasInfo.estimatedGasCost} MOVE (~${gasInfo.estimatedGasUsd})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {gasInfo.isSponsored && (
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-primary/10">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-muted-foreground">
+                      Gas sponsored by{' '}
+                      <a
+                        href="https://shinami.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline font-medium"
+                      >
+                        Shinami
+                      </a>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -283,7 +376,7 @@ export function TransactionConfirmDialog({
           <Button variant="outline" onClick={handleCancel} disabled={isLoading}>
             Cancel
           </Button>
-          <Button onClick={onConfirm} disabled={isLoading || fees.isLoading}>
+          <Button onClick={onConfirm} disabled={isLoading || fees.isLoading || gasInfo.isLoading}>
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
