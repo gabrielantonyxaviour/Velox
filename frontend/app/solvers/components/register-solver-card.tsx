@@ -43,7 +43,7 @@ interface FormData {
 }
 
 export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
-  const { walletAddress, isPrivy, signRawHash, publicKeyHex, signAndSubmitTransaction } =
+  const { walletAddress, isPrivy, signRawHash, publicKeyHex, signAndSubmitTransaction, signTransaction } =
     useWalletContext();
   const { solver, isLoading: isLoadingSolver } = useSolverInfo(walletAddress || null);
 
@@ -159,8 +159,8 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
 
       if (isPrivy && signRawHash && publicKeyHex) {
         await registerSolver(walletAddress, stakeAmount, signRawHash, publicKeyHex);
-      } else if (signAndSubmitTransaction) {
-        await registerSolverNative(walletAddress, stakeAmount, signAndSubmitTransaction);
+      } else if (signTransaction && signAndSubmitTransaction) {
+        await registerSolverNative(walletAddress, stakeAmount, signTransaction, signAndSubmitTransaction);
       } else {
         throw new Error('No wallet connected');
       }

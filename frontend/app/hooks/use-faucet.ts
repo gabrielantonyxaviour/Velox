@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
-import { aptos, VELOX_ADDRESS, toHex } from '../lib/aptos';
+import { aptos, VELOX_ADDRESS } from '../lib/aptos';
 import { Token } from '../constants/tokens';
 import { useWalletContext } from './use-wallet-context';
+import { sponsoredSubmit, sponsoredSubmitNative, isSponsorshipEnabled } from '../lib/shinami';
 import {
   AccountAuthenticatorEd25519,
   Ed25519PublicKey,
   Ed25519Signature,
   generateSigningMessageForTransaction,
 } from '@aptos-labs/ts-sdk';
+import { toHex } from '../lib/aptos';
 
 export type MintStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -42,7 +43,7 @@ export function useFaucet(): UseFaucetReturn {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const { walletAddress, isPrivy, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const { walletAddress, isPrivy, signRawHash, publicKeyHex, signAndSubmitTransaction, signTransaction } = useWalletContext();
 
   const reset = () => {
     setStatus('idle');
@@ -50,7 +51,8 @@ export function useFaucet(): UseFaucetReturn {
     setTxHash(null);
   };
 
-  const mintWithNativeWallet = async (token: Token, amount: string): Promise<string> => {
+  // Fallback: user pays gas (Native)
+  const mintWithNativeWalletFallback = async (token: Token, amount: string): Promise<string> => {
     if (!walletAddress || !signAndSubmitTransaction) {
       throw new Error('Wallet not connected');
     }
@@ -76,7 +78,8 @@ export function useFaucet(): UseFaucetReturn {
     return response.hash;
   };
 
-  const mintWithPrivy = async (token: Token, amount: string): Promise<string> => {
+  // Fallback: user pays gas (Privy)
+  const mintWithPrivyFallback = async (token: Token, amount: string): Promise<string> => {
     if (!walletAddress || !signRawHash || !publicKeyHex) {
       throw new Error('Privy wallet not connected or missing signing function');
     }
@@ -129,6 +132,63 @@ export function useFaucet(): UseFaucetReturn {
     }
 
     return committedTx.hash;
+  };
+
+  // Smart mint with Shinami Gas Station (Privy)
+  const mintWithPrivy = async (token: Token, amount: string): Promise<string> => {
+    if (!walletAddress || !signRawHash || !publicKeyHex) {
+      throw new Error('Privy wallet not connected or missing signing function');
+    }
+
+    const amountInSmallest = toSmallestUnit(amount, token.decimals);
+    const functionId = getFaucetFunction(token);
+
+    const sponsorshipAvailable = await isSponsorshipEnabled();
+    if (sponsorshipAvailable) {
+      try {
+        console.log('[Faucet] Using Shinami Gas Station (Privy)');
+        return await sponsoredSubmit(
+          walletAddress,
+          functionId,
+          [VELOX_ADDRESS, amountInSmallest.toString()],
+          publicKeyHex,
+          signRawHash
+        );
+      } catch (error) {
+        console.warn('[Faucet] Sponsored submission failed, falling back:', error);
+      }
+    }
+
+    console.log('[Faucet] Using user-paid gas (Privy)');
+    return mintWithPrivyFallback(token, amount);
+  };
+
+  // Smart mint with Shinami Gas Station (Native)
+  const mintWithNativeWallet = async (token: Token, amount: string): Promise<string> => {
+    if (!walletAddress || !signTransaction || !signAndSubmitTransaction) {
+      throw new Error('Wallet not connected');
+    }
+
+    const amountInSmallest = toSmallestUnit(amount, token.decimals);
+    const functionId = getFaucetFunction(token);
+
+    const sponsorshipAvailable = await isSponsorshipEnabled();
+    if (sponsorshipAvailable) {
+      try {
+        console.log('[Faucet] Using Shinami Gas Station (Native)');
+        return await sponsoredSubmitNative(
+          walletAddress,
+          functionId,
+          [VELOX_ADDRESS, amountInSmallest.toString()],
+          signTransaction
+        );
+      } catch (error) {
+        console.warn('[Faucet] Sponsored submission failed, falling back:', error);
+      }
+    }
+
+    console.log('[Faucet] Using user-paid gas (Native)');
+    return mintWithNativeWalletFallback(token, amount);
   };
 
   const mint = async (token: Token, amount: string): Promise<string> => {

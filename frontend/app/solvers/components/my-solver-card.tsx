@@ -38,7 +38,7 @@ interface MySolverCardProps {
 }
 
 export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
-  const { isPrivy, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const { isPrivy, signRawHash, publicKeyHex, signAndSubmitTransaction, signTransaction } = useWalletContext();
   const { solver, isLoading, refetch } = useSolverInfo(address);
 
   const [metadata, setMetadata] = useState<SolverMetadata | null>(null);
@@ -89,8 +89,8 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
 
       if (isPrivy && signRawHash && publicKeyHex) {
         await addStake(address, amount, signRawHash, publicKeyHex);
-      } else if (signAndSubmitTransaction) {
-        await addStakeNative(address, amount, signAndSubmitTransaction);
+      } else if (signTransaction && signAndSubmitTransaction) {
+        await addStakeNative(address, amount, signTransaction, signAndSubmitTransaction);
       }
 
       setAdditionalStake('');
@@ -111,14 +111,14 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
       if (solver.isActive) {
         if (isPrivy && signRawHash && publicKeyHex) {
           await deactivateSolver(address, signRawHash, publicKeyHex);
-        } else if (signAndSubmitTransaction) {
-          await deactivateSolverNative(address, signAndSubmitTransaction);
+        } else if (signTransaction && signAndSubmitTransaction) {
+          await deactivateSolverNative(address, signTransaction, signAndSubmitTransaction);
         }
       } else {
         if (isPrivy && signRawHash && publicKeyHex) {
           await reactivateSolver(address, signRawHash, publicKeyHex);
-        } else if (signAndSubmitTransaction) {
-          await reactivateSolverNative(address, signAndSubmitTransaction);
+        } else if (signTransaction && signAndSubmitTransaction) {
+          await reactivateSolverNative(address, signTransaction, signAndSubmitTransaction);
         }
       }
 
