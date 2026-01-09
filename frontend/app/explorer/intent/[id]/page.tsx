@@ -10,7 +10,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Progress } from '@/app/components/ui/progress';
 import { IntentRecord, getIntentTypeDisplay } from '@/app/lib/velox/types';
-import { getIntent, fetchIntentEvents, getIntentEventData, getScheduledIntentInfo, fetchPeriodFillEvents, ScheduledIntentInfo } from '@/app/lib/velox/queries';
+import { getIntent, fetchIntentEvents, getIntentEventData, getScheduledIntentInfo, fetchPeriodFillEvents, ScheduledIntentInfo, getDutchAuctionInfo } from '@/app/lib/velox/queries';
 import { MOVEMENT_CONFIGS, CURRENT_NETWORK, VELOX_ADDRESS } from '@/app/lib/aptos';
 import { checkAuctionForIntent, getStoredAuctionInfo, StoredAuctionInfo } from '@/app/lib/velox/auction-storage';
 import { SealedBidAuctionSection } from '@/app/components/intent/sealed-bid-auction-section';
@@ -116,29 +116,50 @@ export default function IntentDetailPage() {
             data.outputAmount = eventData.outputAmount || data.outputAmount;
           }
 
-          // Check for auction info
-          const storedInfo = getStoredAuctionInfo(intentId);
-          if (storedInfo) {
-            data.auctionType = storedInfo.type;
-            data.auctionStatus = data.status === 'filled' ? 'completed' : 'active';
-            data.auctionStartTime = storedInfo.startTime;
-            data.auctionEndTime = storedInfo.endTime;
-            data.auctionDuration = storedInfo.duration;
-            if (storedInfo.startPrice) data.auctionStartPrice = BigInt(storedInfo.startPrice);
-            if (storedInfo.endPrice) data.auctionEndPrice = BigInt(storedInfo.endPrice);
-            setAuctionInfo(storedInfo);
+          // First try to get Dutch auction info directly from on-chain (most accurate)
+          const dutchInfo = await getDutchAuctionInfo(id);
+          if (dutchInfo) {
+            data.auctionType = 'dutch';
+            data.auctionStatus = dutchInfo.isActive ? 'active' : 'completed';
+            data.auctionStartTime = dutchInfo.startTime;
+            data.auctionDuration = dutchInfo.duration;
+            data.auctionStartPrice = dutchInfo.startPrice;
+            data.auctionEndPrice = dutchInfo.endPrice;
+            data.auctionCurrentPrice = dutchInfo.currentPrice;
+            if (dutchInfo.winner) data.auctionWinner = dutchInfo.winner;
+            if (dutchInfo.acceptedPrice) data.auctionAcceptedPrice = dutchInfo.acceptedPrice;
+            setAuctionInfo({
+              type: 'dutch',
+              startTime: dutchInfo.startTime,
+              duration: dutchInfo.duration,
+              startPrice: dutchInfo.startPrice.toString(),
+              endPrice: dutchInfo.endPrice.toString(),
+            });
           } else {
-            // Try on-chain lookup
-            const onChainAuction = await checkAuctionForIntent(id);
-            if (onChainAuction) {
-              data.auctionType = onChainAuction.type;
+            // Check localStorage for auction info (backup)
+            const storedInfo = getStoredAuctionInfo(intentId);
+            if (storedInfo) {
+              data.auctionType = storedInfo.type;
               data.auctionStatus = data.status === 'filled' ? 'completed' : 'active';
-              data.auctionStartTime = onChainAuction.startTime;
-              data.auctionEndTime = onChainAuction.endTime;
-              data.auctionDuration = onChainAuction.duration;
-              if (onChainAuction.startPrice) data.auctionStartPrice = BigInt(onChainAuction.startPrice);
-              if (onChainAuction.endPrice) data.auctionEndPrice = BigInt(onChainAuction.endPrice);
-              setAuctionInfo(onChainAuction);
+              data.auctionStartTime = storedInfo.startTime;
+              data.auctionEndTime = storedInfo.endTime;
+              data.auctionDuration = storedInfo.duration;
+              if (storedInfo.startPrice) data.auctionStartPrice = BigInt(storedInfo.startPrice);
+              if (storedInfo.endPrice) data.auctionEndPrice = BigInt(storedInfo.endPrice);
+              setAuctionInfo(storedInfo);
+            } else {
+              // Try on-chain lookup for sealed-bid auctions
+              const onChainAuction = await checkAuctionForIntent(id);
+              if (onChainAuction) {
+                data.auctionType = onChainAuction.type;
+                data.auctionStatus = data.status === 'filled' ? 'completed' : 'active';
+                data.auctionStartTime = onChainAuction.startTime;
+                data.auctionEndTime = onChainAuction.endTime;
+                data.auctionDuration = onChainAuction.duration;
+                if (onChainAuction.startPrice) data.auctionStartPrice = BigInt(onChainAuction.startPrice);
+                if (onChainAuction.endPrice) data.auctionEndPrice = BigInt(onChainAuction.endPrice);
+                setAuctionInfo(onChainAuction);
+              }
             }
           }
         }

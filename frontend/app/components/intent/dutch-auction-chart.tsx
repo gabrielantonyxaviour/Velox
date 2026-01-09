@@ -37,15 +37,16 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [elapsedPercent, setElapsedPercent] = useState<number>(0);
 
-  // Prices are stored as token amounts with 8 decimals
-  // Default to reasonable values if not set (should rarely happen)
-  const startPrice = intent.auctionStartPrice ?? BigInt(3000000000); // Default 30.0
-  const endPrice = intent.auctionEndPrice ?? BigInt(2500000000);     // Default 25.0
-  const duration = intent.auctionDuration ?? 60;
+  // Check if we have valid auction data - no fake defaults
+  const hasValidData = intent.auctionStartPrice && intent.auctionEndPrice && intent.auctionDuration;
+
+  const startPrice = intent.auctionStartPrice ?? BigInt(0);
+  const endPrice = intent.auctionEndPrice ?? BigInt(0);
+  const duration = intent.auctionDuration ?? 0;
   const startTime = intent.auctionStartTime ?? intent.createdAt;
   const isActive = intent.auctionStatus === 'active';
   const purchasePrice = intent.auctionAcceptedPrice;
-  const purchaseTime = intent.status === 'filled' ? (intent.auctionEndTime ?? startTime + duration / 2) : null;
+  const purchaseTime = intent.status === 'filled' ? (intent.auctionEndTime ?? startTime + (duration > 0 ? duration / 2 : 0)) : null;
 
   // Calculate current price based on Dutch auction curve
   const calculateCurrentPrice = useCallback((elapsedSeconds: number): bigint => {
@@ -289,6 +290,29 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
   }, [isActive]);
+
+  // Show error state if no valid auction data
+  if (!hasValidData) {
+    return (
+      <>
+        <Separator />
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <TrendingDown className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Dutch Auction Price</span>
+          </div>
+          <div className="p-4 rounded-lg border border-border bg-muted/30 text-center">
+            <p className="text-sm text-muted-foreground">
+              Auction data not available on-chain.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              The auction may have expired or not been created yet.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
