@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Header } from '@/app/components/layout/header';
 import { Footer } from '@/app/components/layout/footer';
@@ -9,23 +9,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { Badge } from '@/app/components/ui/badge';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Progress } from '@/app/components/ui/progress';
-import { IntentRecord, getIntentTypeDisplay } from '@/app/lib/velox/types';
-import { getIntent, fetchIntentEvents, getIntentEventData, getScheduledIntentInfo, fetchPeriodFillEvents, ScheduledIntentInfo, getDutchAuctionInfo } from '@/app/lib/velox/queries';
-import { MOVEMENT_CONFIGS, CURRENT_NETWORK, VELOX_ADDRESS } from '@/app/lib/aptos';
-import { checkAuctionForIntent, getStoredAuctionInfo, StoredAuctionInfo } from '@/app/lib/velox/auction-storage';
+import {
+  IntentRecord,
+  getIntentTypeDisplay,
+  isScheduledIntent,
+  isSealedBidAuction,
+  isDutchAuction,
+  hasAuction,
+  isAuctionActive,
+  getTimeUntilNextChunk,
+  isNextChunkReady,
+  getIntentTotalAmount,
+} from '@/app/lib/velox/types';
+import { getIntent } from '@/app/lib/velox/queries';
+import { MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
 import { SealedBidAuctionSection } from '@/app/components/intent/sealed-bid-auction-section';
 import { DutchAuctionChart } from '@/app/components/intent/dutch-auction-chart';
-import { TOKENS } from '@/constants/contracts';
 import { TOKEN_LIST } from '@/app/constants/tokens';
-import { ExternalLink, ArrowRight, Clock, User, Zap, Timer, TrendingUp, Check, ArrowUpRight, Calendar, Gavel } from 'lucide-react';
-
-interface PeriodFill {
-  txHash: string;
-  periodNumber: number;
-  inputAmount: bigint;
-  outputAmount: bigint;
-  filledAt: number;
-}
+import {
+  ExternalLink, ArrowRight, Clock, User, Zap, Timer, TrendingUp,
+  Check, ArrowUpRight, Calendar, Gavel, Target,
+} from 'lucide-react';
 
 const network = MOVEMENT_CONFIGS[CURRENT_NETWORK].explorer;
 const getTxUrl = (hash: string) => `https://explorer.movementnetwork.xyz/txn/${hash}?network=${network}`;
@@ -56,12 +60,21 @@ function formatInterval(seconds: number): string {
   return `${Math.floor(seconds / 86400)} days`;
 }
 
+function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return 'Ready';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+}
+
 function getTokenSymbol(address: string): string {
   const token = TOKEN_LIST.find((t) => t.address === address);
-  if (token) return token.symbol;
-  if (address === TOKENS.tUSDC.address) return 'tUSDC';
-  if (address === TOKENS.tMOVE.address) return 'tMOVE';
-  return address.slice(0, 8) + '...';
+  return token?.symbol || address.slice(0, 8) + '...';
 }
 
 function getTokenDecimals(address: string): number {
@@ -70,9 +83,8 @@ function getTokenDecimals(address: string): number {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-500/10 text-amber-400',
+  active: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
-  partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
 };
@@ -84,85 +96,14 @@ export default function IntentDetailPage() {
   const [intent, setIntent] = useState<IntentRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [scheduledInfo, setScheduledInfo] = useState<ScheduledIntentInfo | null>(null);
-  const [periodFills, setPeriodFills] = useState<PeriodFill[]>([]);
   const [countdown, setCountdown] = useState<string>('');
-  const [auctionInfo, setAuctionInfo] = useState<StoredAuctionInfo | null>(null);
-
-  const isScheduledIntent = intent?.intentType === 'dca' || intent?.intentType === 'twap';
-
-  const fetchScheduledData = useCallback(async () => {
-    if (!intent || !isScheduledIntent) return;
-    const [info, fills] = await Promise.all([
-      getScheduledIntentInfo(intent.id),
-      fetchPeriodFillEvents(intent.id),
-    ]);
-    setScheduledInfo(info);
-    setPeriodFills(fills);
-  }, [intent, isScheduledIntent]);
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
         const id = BigInt(intentId);
-        await fetchIntentEvents([id]);
         const data = await getIntent(id);
-        if (data) {
-          const eventData = getIntentEventData(id);
-          if (eventData) {
-            data.submissionTxHash = eventData.submissionTxHash || data.submissionTxHash;
-            data.settlementTxHash = eventData.settlementTxHash || data.settlementTxHash;
-            data.outputAmount = eventData.outputAmount || data.outputAmount;
-          }
-
-          // First try to get Dutch auction info directly from on-chain (most accurate)
-          const dutchInfo = await getDutchAuctionInfo(id);
-          if (dutchInfo) {
-            data.auctionType = 'dutch';
-            data.auctionStatus = dutchInfo.isActive ? 'active' : 'completed';
-            data.auctionStartTime = dutchInfo.startTime;
-            data.auctionDuration = dutchInfo.duration;
-            data.auctionStartPrice = dutchInfo.startPrice;
-            data.auctionEndPrice = dutchInfo.endPrice;
-            data.auctionCurrentPrice = dutchInfo.currentPrice;
-            if (dutchInfo.winner) data.auctionWinner = dutchInfo.winner;
-            if (dutchInfo.acceptedPrice) data.auctionAcceptedPrice = dutchInfo.acceptedPrice;
-            setAuctionInfo({
-              type: 'dutch',
-              startTime: dutchInfo.startTime,
-              duration: dutchInfo.duration,
-              startPrice: dutchInfo.startPrice.toString(),
-              endPrice: dutchInfo.endPrice.toString(),
-            });
-          } else {
-            // Check localStorage for auction info (backup)
-            const storedInfo = getStoredAuctionInfo(intentId);
-            if (storedInfo) {
-              data.auctionType = storedInfo.type;
-              data.auctionStatus = data.status === 'filled' ? 'completed' : 'active';
-              data.auctionStartTime = storedInfo.startTime;
-              data.auctionEndTime = storedInfo.endTime;
-              data.auctionDuration = storedInfo.duration;
-              if (storedInfo.startPrice) data.auctionStartPrice = BigInt(storedInfo.startPrice);
-              if (storedInfo.endPrice) data.auctionEndPrice = BigInt(storedInfo.endPrice);
-              setAuctionInfo(storedInfo);
-            } else {
-              // Try on-chain lookup for sealed-bid auctions
-              const onChainAuction = await checkAuctionForIntent(id);
-              if (onChainAuction) {
-                data.auctionType = onChainAuction.type;
-                data.auctionStatus = data.status === 'filled' ? 'completed' : 'active';
-                data.auctionStartTime = onChainAuction.startTime;
-                data.auctionEndTime = onChainAuction.endTime;
-                data.auctionDuration = onChainAuction.duration;
-                if (onChainAuction.startPrice) data.auctionStartPrice = BigInt(onChainAuction.startPrice);
-                if (onChainAuction.endPrice) data.auctionEndPrice = BigInt(onChainAuction.endPrice);
-                setAuctionInfo(onChainAuction);
-              }
-            }
-          }
-        }
         setIntent(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load intent');
@@ -173,46 +114,27 @@ export default function IntentDetailPage() {
     if (intentId) fetchData();
   }, [intentId]);
 
+  // Countdown timer for scheduled intents
   useEffect(() => {
-    if (isScheduledIntent && intent) {
-      fetchScheduledData();
-      const interval = setInterval(fetchScheduledData, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [isScheduledIntent, intent, fetchScheduledData]);
+    if (!intent) return;
 
-  useEffect(() => {
-    if (!scheduledInfo) return;
+    const intentData = intent.intent;
+    const isScheduled = isScheduledIntent(intentData);
+    if (!isScheduled) return;
 
     const updateCountdown = () => {
-      const now = Math.floor(Date.now() / 1000);
-      const diff = scheduledInfo.nextExecution - now;
-
-      if (diff <= 0) {
-        setCountdown(scheduledInfo.isReady ? 'Ready to execute' : 'Waiting for solver...');
+      const timeUntil = getTimeUntilNextChunk(intent);
+      if (timeUntil <= 0) {
+        setCountdown(isNextChunkReady(intent) ? 'Ready to execute' : 'Waiting for solver...');
         return;
       }
-
-      const days = Math.floor(diff / 86400);
-      const hours = Math.floor((diff % 86400) / 3600);
-      const mins = Math.floor((diff % 3600) / 60);
-      const secs = diff % 60;
-
-      if (days > 0) {
-        setCountdown(`${days}d ${hours}h ${mins}m`);
-      } else if (hours > 0) {
-        setCountdown(`${hours}h ${mins}m ${secs}s`);
-      } else if (mins > 0) {
-        setCountdown(`${mins}m ${secs}s`);
-      } else {
-        setCountdown(`${secs}s`);
-      }
+      setCountdown(formatCountdown(timeUntil));
     };
 
     updateCountdown();
     const timer = setInterval(updateCountdown, 1000);
     return () => clearInterval(timer);
-  }, [scheduledInfo]);
+  }, [intent]);
 
   const renderRow = (label: string, value: React.ReactNode) => (
     <div className="flex justify-between py-2 border-b border-border last:border-0">
@@ -239,16 +161,32 @@ export default function IntentDetailPage() {
         ) : (
           <div className="space-y-4">
             {(() => {
-              const inputDecimals = getTokenDecimals(intent.inputToken);
-              const outputDecimals = getTokenDecimals(intent.outputToken);
-              const inputSymbol = getTokenSymbol(intent.inputToken);
-              const outputSymbol = getTokenSymbol(intent.outputToken);
+              const intentData = intent.intent;
+              const inputDecimals = getTokenDecimals(intentData.inputToken);
+              const outputDecimals = getTokenDecimals(intentData.outputToken);
+              const inputSymbol = getTokenSymbol(intentData.inputToken);
+              const outputSymbol = getTokenSymbol(intentData.outputToken);
+              const totalAmount = getIntentTotalAmount(intentData);
 
-              const periodsExecuted = scheduledInfo?.chunksExecuted ?? intent.periodsExecuted ?? intent.chunksExecuted ?? periodFills.length;
-              const totalPeriods = scheduledInfo?.totalChunks ?? intent.totalPeriods ?? intent.numChunks ?? 0;
-              const progress = totalPeriods > 0 ? (periodsExecuted / totalPeriods) * 100 : 0;
-              const isScheduledCompleted = scheduledInfo?.isCompleted || (totalPeriods > 0 && periodsExecuted >= totalPeriods);
-              const totalOutputReceived = periodFills.reduce((acc, f) => acc + f.outputAmount, BigInt(0));
+              const isScheduled = isScheduledIntent(intentData);
+              const totalChunks = intentData.numChunks ?? intentData.totalPeriods ?? 0;
+              const chunksExecuted = intent.chunksExecuted ?? 0;
+              const progress = totalChunks > 0 ? (chunksExecuted / totalChunks) * 100 : 0;
+              const isScheduledCompleted = totalChunks > 0 && chunksExecuted >= totalChunks;
+
+              const isAuction = hasAuction(intent);
+              const solver = intent.fills.length > 0 ? intent.fills[0].solver : null;
+
+              const getIcon = () => {
+                if (isAuction) return isSealedBidAuction(intent) ? Gavel : TrendingUp;
+                switch (intentData.type) {
+                  case 'dca': return Calendar;
+                  case 'twap': return TrendingUp;
+                  case 'limit_order': return Target;
+                  default: return Zap;
+                }
+              };
+              const Icon = getIcon();
 
               return (
                 <>
@@ -257,18 +195,16 @@ export default function IntentDetailPage() {
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          {intent.intentType === 'dca' && <Calendar className="h-5 w-5 text-primary" />}
-                          {intent.intentType === 'twap' && <TrendingUp className="h-5 w-5 text-primary" />}
-                          {intent.auctionType && <Gavel className="h-5 w-5 text-primary" />}
+                          <Icon className="h-5 w-5 text-primary" />
                           <CardTitle className="text-lg">Intent #{intent.id.toString()}</CardTitle>
                         </div>
                         <div className="flex gap-2">
                           <Badge className="bg-primary/10 text-primary">
-                            {intent.auctionType === 'sealed-bid' ? 'Sealed Bid Swap' :
-                             intent.auctionType === 'dutch' ? 'Dutch Auction Swap' :
-                             getIntentTypeDisplay(intent.intentType)}
+                            {isAuction
+                              ? (isSealedBidAuction(intent) ? 'Sealed Bid Swap' : 'Dutch Auction Swap')
+                              : getIntentTypeDisplay(intentData.type)}
                           </Badge>
-                          {isScheduledIntent && isScheduledCompleted ? (
+                          {isScheduled && isScheduledCompleted ? (
                             <Badge className="bg-primary/10 text-primary">
                               <Check className="h-3 w-3 mr-1" />COMPLETED
                             </Badge>
@@ -281,26 +217,19 @@ export default function IntentDetailPage() {
                     <CardContent>
                       <div className="flex items-center justify-center gap-3 py-4">
                         <div className="text-center">
-                          <p className="text-2xl font-bold">{formatAmount(intent.amountIn, inputDecimals)}</p>
+                          <p className="text-2xl font-bold">{formatAmount(totalAmount, inputDecimals)}</p>
                           <p className="text-sm text-muted-foreground">{inputSymbol}</p>
                         </div>
                         <ArrowRight className="h-6 w-6 text-muted-foreground" />
                         <div className="text-center">
-                          {isScheduledIntent ? (
-                            <>
-                              <p className="text-2xl font-bold text-primary">
-                                {totalOutputReceived > BigInt(0) ? formatAmount(totalOutputReceived, outputDecimals) : '--'}
-                              </p>
-                              <p className="text-sm text-muted-foreground">{outputSymbol}</p>
-                              {totalOutputReceived > BigInt(0) && (
-                                <p className="text-xs text-primary mt-1">Accumulated</p>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              <p className="text-2xl font-bold">{intent.outputAmount ? formatAmount(intent.outputAmount, outputDecimals) : '--'}</p>
-                              <p className="text-sm text-muted-foreground">{outputSymbol}</p>
-                            </>
+                          <p className="text-2xl font-bold text-primary">
+                            {intent.totalOutputReceived > 0n
+                              ? formatAmount(intent.totalOutputReceived, outputDecimals)
+                              : '--'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{outputSymbol}</p>
+                          {isScheduled && intent.totalOutputReceived > 0n && (
+                            <p className="text-xs text-primary mt-1">Accumulated</p>
                           )}
                         </div>
                       </div>
@@ -308,15 +237,15 @@ export default function IntentDetailPage() {
                   </Card>
 
                   {/* Auction Visualization */}
-                  {intent.auctionType === 'sealed-bid' && (
+                  {isAuction && isSealedBidAuction(intent) && (
                     <SealedBidAuctionSection intent={intent} />
                   )}
-                  {intent.auctionType === 'dutch' && (
+                  {isAuction && isDutchAuction(intent) && (
                     <DutchAuctionChart intent={intent} />
                   )}
 
                   {/* DCA/TWAP Progress Card */}
-                  {isScheduledIntent && (
+                  {isScheduled && (
                     <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base flex items-center gap-2">
@@ -324,72 +253,68 @@ export default function IntentDetailPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        {/* Progress Bar */}
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">
-                              {intent.intentType === 'dca' ? 'Periods' : 'Chunks'}
+                              {intentData.type === 'dca' ? 'Periods' : 'Chunks'}
                             </span>
-                            <span className="font-medium">{periodsExecuted} / {totalPeriods}</span>
+                            <span className="font-medium">{chunksExecuted} / {totalChunks}</span>
                           </div>
                           <Progress value={progress} className="h-2" />
                         </div>
 
-                        {/* Countdown Timer */}
                         {!isScheduledCompleted && countdown && (
                           <div className="flex items-center justify-between p-3 rounded-md bg-primary/10 border border-primary/20">
                             <div className="flex items-center gap-2">
                               <Timer className="h-4 w-4 text-primary" />
                               <span className="text-sm text-muted-foreground">
-                                Next {intent.intentType === 'dca' ? 'buy' : 'chunk'}:
+                                Next {intentData.type === 'dca' ? 'buy' : 'chunk'}:
                               </span>
                             </div>
                             <span className="text-sm font-semibold text-primary">{countdown}</span>
                           </div>
                         )}
 
-                        {/* Completed Status */}
                         {isScheduledCompleted && (
                           <div className="flex items-center gap-2 p-3 rounded-md bg-primary/10 border border-primary/20">
                             <Check className="h-4 w-4 text-primary" />
                             <span className="text-sm text-primary">
-                              All {totalPeriods} {intent.intentType === 'dca' ? 'periods' : 'chunks'} completed!
+                              All {totalChunks} {intentData.type === 'dca' ? 'periods' : 'chunks'} completed!
                             </span>
                           </div>
                         )}
 
-                        {/* Accumulated Output */}
-                        {totalOutputReceived > BigInt(0) && (
+                        {intent.totalOutputReceived > 0n && (
                           <div className="flex items-center justify-between p-3 rounded-md bg-muted/50 border border-border">
                             <div className="flex items-center gap-2">
                               <TrendingUp className="h-4 w-4 text-primary" />
                               <span className="text-sm text-muted-foreground">Total Accumulated:</span>
                             </div>
                             <span className="text-sm font-semibold text-primary">
-                              {formatAmount(totalOutputReceived, outputDecimals)} {outputSymbol}
+                              {formatAmount(intent.totalOutputReceived, outputDecimals)} {outputSymbol}
                             </span>
                           </div>
                         )}
 
-                        {/* Period Fill Transactions */}
-                        {periodFills.length > 0 && (
+                        {intent.fills.length > 0 && (
                           <div className="space-y-2">
                             <span className="text-sm text-muted-foreground">
-                              {intent.intentType === 'dca' ? 'Period' : 'Chunk'} Fills:
+                              {intentData.type === 'dca' ? 'Period' : 'Chunk'} Fills:
                             </span>
                             <div className="flex flex-wrap gap-2">
-                              {periodFills.map((fill) => (
-                                <a
-                                  key={fill.txHash}
-                                  href={getTxUrl(fill.txHash)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                                  title={`#${fill.periodNumber}: ${formatAmount(fill.outputAmount, outputDecimals)} ${outputSymbol}`}
+                              {intent.fills.map((fill, idx) => (
+                                <div
+                                  key={`fill-${idx}`}
+                                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-primary/10 text-primary"
+                                  title={`${formatAmount(fill.outputAmount, outputDecimals)} ${outputSymbol}`}
                                 >
-                                  <span>#{fill.periodNumber}</span>
-                                  <ArrowUpRight className="h-3 w-3" />
-                                </a>
+                                  <span>#{idx + 1}</span>
+                                  {fill.txHash && (
+                                    <a href={getTxUrl(fill.txHash)} target="_blank" rel="noopener noreferrer">
+                                      <ArrowUpRight className="h-3 w-3" />
+                                    </a>
+                                  )}
+                                </div>
                               ))}
                             </div>
                           </div>
@@ -400,60 +325,81 @@ export default function IntentDetailPage() {
 
                   {/* Details Card */}
                   <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4" /> Details</CardTitle></CardHeader>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <User className="h-4 w-4" /> Details
+                      </CardTitle>
+                    </CardHeader>
                     <CardContent className="space-y-0">
                       {renderRow('User', renderLink(intent.user, 'account'))}
-                      {renderRow('Input Token', <span className="font-mono text-xs">{intent.inputToken}</span>)}
-                      {renderRow('Output Token', <span className="font-mono text-xs">{intent.outputToken}</span>)}
-                      {renderRow('Amount In', `${formatAmount(intent.amountIn, inputDecimals)} ${inputSymbol}`)}
-                      {!isScheduledIntent && intent.outputAmount && renderRow('Amount Out', `${formatAmount(intent.outputAmount, outputDecimals)} ${outputSymbol}`)}
-                      {intent.filledAmount > BigInt(0) && renderRow('Filled Amount', formatAmount(intent.filledAmount, inputDecimals))}
-                      {intent.executionPrice && renderRow('Execution Price', formatPrice(intent.executionPrice))}
-                      {intent.solver && renderRow('Solver', renderLink(intent.solver, 'account'))}
+                      {renderRow('Input Token', <span className="font-mono text-xs">{intentData.inputToken}</span>)}
+                      {renderRow('Output Token', <span className="font-mono text-xs">{intentData.outputToken}</span>)}
+                      {renderRow('Amount In', `${formatAmount(totalAmount, inputDecimals)} ${inputSymbol}`)}
+                      {intent.totalOutputReceived > 0n && renderRow('Amount Out', `${formatAmount(intent.totalOutputReceived, outputDecimals)} ${outputSymbol}`)}
+                      {solver && renderRow('Solver', renderLink(solver, 'account'))}
                     </CardContent>
                   </Card>
 
                   {/* Timestamps Card */}
                   <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4" /> Timestamps</CardTitle></CardHeader>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Clock className="h-4 w-4" /> Timestamps
+                      </CardTitle>
+                    </CardHeader>
                     <CardContent className="space-y-0">
                       {renderRow('Created At', formatTime(intent.createdAt))}
-                      {intent.deadline && renderRow('Deadline', formatTime(intent.deadline))}
+                      {intentData.deadline && renderRow('Deadline', formatTime(intentData.deadline))}
+                      {intentData.expiry && renderRow('Expiry', formatTime(intentData.expiry))}
                     </CardContent>
                   </Card>
 
                   {/* Type-Specific Card */}
                   <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Zap className="h-4 w-4" /> {getIntentTypeDisplay(intent.intentType)} Parameters</CardTitle></CardHeader>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Zap className="h-4 w-4" /> {getIntentTypeDisplay(intentData.type)} Parameters
+                      </CardTitle>
+                    </CardHeader>
                     <CardContent className="space-y-0">
-                      {intent.intentType === 'swap' && intent.minAmountOut !== undefined && renderRow('Min Amount Out', `${formatAmount(intent.minAmountOut, outputDecimals)} ${outputSymbol}`)}
-                      {intent.intentType === 'limit_order' && (<>
-                        {intent.limitPrice !== undefined && renderRow('Limit Price', formatPrice(intent.limitPrice))}
-                        {renderRow('Partial Fill', intent.partialFillAllowed ? 'Allowed' : 'Not Allowed')}
-                      </>)}
-                      {intent.intentType === 'twap' && (<>
-                        {intent.numChunks !== undefined && renderRow('Total Chunks', intent.numChunks.toString())}
-                        {renderRow('Chunks Executed', periodsExecuted.toString())}
-                        {intent.intervalSeconds !== undefined && renderRow('Interval', formatInterval(intent.intervalSeconds))}
-                        {intent.maxSlippageBps !== undefined && renderRow('Max Slippage', `${(intent.maxSlippageBps / 100).toFixed(2)}%`)}
-                      </>)}
-                      {intent.intentType === 'dca' && (<>
-                        {intent.totalPeriods !== undefined && renderRow('Total Periods', intent.totalPeriods.toString())}
-                        {renderRow('Periods Executed', periodsExecuted.toString())}
-                        {intent.amountPerPeriod !== undefined && renderRow('Amount Per Period', `${formatAmount(intent.amountPerPeriod, inputDecimals)} ${inputSymbol}`)}
-                        {intent.intervalSeconds !== undefined && renderRow('Interval', formatInterval(intent.intervalSeconds))}
-                      </>)}
+                      {intentData.type === 'swap' && intentData.minAmountOut !== undefined && (
+                        renderRow('Min Amount Out', `${formatAmount(intentData.minAmountOut, outputDecimals)} ${outputSymbol}`)
+                      )}
+                      {intentData.type === 'limit_order' && (
+                        <>
+                          {intentData.limitPrice !== undefined && renderRow('Limit Price', formatPrice(intentData.limitPrice))}
+                        </>
+                      )}
+                      {intentData.type === 'twap' && (
+                        <>
+                          {intentData.numChunks !== undefined && renderRow('Total Chunks', intentData.numChunks.toString())}
+                          {renderRow('Chunks Executed', chunksExecuted.toString())}
+                          {intentData.intervalSeconds !== undefined && renderRow('Interval', formatInterval(intentData.intervalSeconds))}
+                          {intentData.maxSlippageBps !== undefined && renderRow('Max Slippage', `${(intentData.maxSlippageBps / 100).toFixed(2)}%`)}
+                        </>
+                      )}
+                      {intentData.type === 'dca' && (
+                        <>
+                          {intentData.totalPeriods !== undefined && renderRow('Total Periods', intentData.totalPeriods.toString())}
+                          {renderRow('Periods Executed', chunksExecuted.toString())}
+                          {intentData.amountPerPeriod !== undefined && renderRow('Amount Per Period', `${formatAmount(intentData.amountPerPeriod, inputDecimals)} ${inputSymbol}`)}
+                          {intentData.intervalSeconds !== undefined && renderRow('Interval', formatInterval(intentData.intervalSeconds))}
+                        </>
+                      )}
                     </CardContent>
                   </Card>
 
                   {/* Transactions Card */}
-                  <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-base">Transactions</CardTitle></CardHeader>
-                    <CardContent className="space-y-0">
-                      {intent.submissionTxHash ? renderRow('Submission Tx', renderLink(intent.submissionTxHash, 'tx')) : renderRow('Submission Tx', <span className="text-muted-foreground">--</span>)}
-                      {intent.settlementTxHash ? renderRow('Settlement Tx', renderLink(intent.settlementTxHash, 'tx')) : renderRow('Settlement Tx', <span className="text-muted-foreground">--</span>)}
-                    </CardContent>
-                  </Card>
+                  {intent.fills.length > 0 && (
+                    <Card>
+                      <CardHeader className="pb-2"><CardTitle className="text-base">Transactions</CardTitle></CardHeader>
+                      <CardContent className="space-y-0">
+                        {intent.fills.slice(0, 5).map((fill, idx) => (
+                          fill.txHash && renderRow(`Fill #${idx + 1}`, renderLink(fill.txHash, 'tx'))
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
                 </>
               );
             })()}

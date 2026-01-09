@@ -1,7 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { IntentRecord } from '@/app/lib/velox/types';
+import {
+  IntentRecord,
+  isPartiallyFilled,
+  getFillPercentage,
+  getIntentTotalAmount,
+} from '@/app/lib/velox/types';
 import { Badge } from '../ui/badge';
 import { TOKEN_LIST } from '@/app/constants/tokens';
 import {
@@ -10,9 +15,8 @@ import {
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-500/10 text-amber-400',
+  active: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
-  partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
 };
@@ -56,22 +60,23 @@ function calculateSlippage(expected: bigint, actual: bigint): number {
 }
 
 export function ExplorerSwapRow({ intent }: ExplorerSwapRowProps) {
-  const inputSymbol = getTokenSymbol(intent.inputToken);
-  const outputSymbol = getTokenSymbol(intent.outputToken);
-  const inputDecimals = getTokenDecimals(intent.inputToken);
-  const outputDecimals = getTokenDecimals(intent.outputToken);
+  const { intent: swapIntent } = intent;
+  const inputSymbol = getTokenSymbol(swapIntent.inputToken);
+  const outputSymbol = getTokenSymbol(swapIntent.outputToken);
+  const inputDecimals = getTokenDecimals(swapIntent.inputToken);
+  const outputDecimals = getTokenDecimals(swapIntent.outputToken);
 
   const isFilled = intent.status === 'filled';
-  const isPending = intent.status === 'pending';
+  const isActive = intent.status === 'active';
 
   // Calculate slippage if filled
-  const slippage = isFilled && intent.minAmountOut && intent.outputAmount
-    ? calculateSlippage(intent.minAmountOut, intent.outputAmount)
+  const slippage = isFilled && swapIntent.minAmountOut && intent.totalOutputReceived > 0n
+    ? calculateSlippage(swapIntent.minAmountOut, intent.totalOutputReceived)
     : null;
 
-  // Time remaining for pending
-  const timeRemaining = isPending && intent.deadline
-    ? Math.max(0, intent.deadline - Math.floor(Date.now() / 1000))
+  // Time remaining for active
+  const timeRemaining = isActive && swapIntent.deadline
+    ? Math.max(0, swapIntent.deadline - Math.floor(Date.now() / 1000))
     : null;
 
   const formatTimeRemaining = (seconds: number): string => {
@@ -80,6 +85,9 @@ export function ExplorerSwapRow({ intent }: ExplorerSwapRowProps) {
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
     return `${Math.floor(seconds / 3600)}h`;
   };
+
+  // Get solver from fills if available
+  const solver = intent.fills.length > 0 ? intent.fills[0].solver : null;
 
   return (
     <Link
@@ -104,11 +112,11 @@ export function ExplorerSwapRow({ intent }: ExplorerSwapRowProps) {
       {/* Amount & Details Row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{formatAmount(intent.amountIn, inputDecimals)} {inputSymbol}</span>
+          <span className="font-medium">{formatAmount(swapIntent.amountIn ?? 0n, inputDecimals)} {inputSymbol}</span>
           <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          {isFilled && intent.outputAmount ? (
+          {isFilled && intent.totalOutputReceived > 0n ? (
             <span className="text-primary font-medium">
-              {formatAmount(intent.outputAmount, outputDecimals)} {outputSymbol}
+              {formatAmount(intent.totalOutputReceived, outputDecimals)} {outputSymbol}
             </span>
           ) : (
             <span>{outputSymbol}</span>
@@ -129,15 +137,15 @@ export function ExplorerSwapRow({ intent }: ExplorerSwapRowProps) {
           )}
 
           {/* Solver info for filled swaps */}
-          {isFilled && intent.solver && (
+          {isFilled && solver && (
             <div className="flex items-center gap-1 text-muted-foreground">
               <User className="h-3 w-3" />
-              <span>{truncateAddress(intent.solver)}</span>
+              <span>{truncateAddress(solver)}</span>
             </div>
           )}
 
-          {/* Time remaining for pending */}
-          {isPending && timeRemaining !== null && (
+          {/* Time remaining for active */}
+          {isActive && timeRemaining !== null && (
             <div className={`flex items-center gap-1 ${timeRemaining < 300 ? 'text-amber-400' : 'text-muted-foreground'}`}>
               <Clock className="h-3 w-3" />
               <span>{formatTimeRemaining(timeRemaining)}</span>

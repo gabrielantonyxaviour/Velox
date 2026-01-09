@@ -1,66 +1,61 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getDutchAuction, getDutchPrice } from '@/app/lib/velox/transactions';
-import { DutchAuction } from '@/app/lib/velox/types';
+import { IntentRecord, isDutchAuction, isAuctionActive } from '@/app/lib/velox/types';
 import { Progress } from '@/app/components/ui/progress';
 import { Clock } from 'lucide-react';
 
 interface DutchAuctionMonitorProps {
-  intentId: bigint;
+  intent: IntentRecord;
 }
 
-export function DutchAuctionMonitor({ intentId }: DutchAuctionMonitorProps) {
-  const [auction, setAuction] = useState<DutchAuction | null>(null);
-  const [currentPrice, setCurrentPrice] = useState<bigint>(BigInt(0));
+export function DutchAuctionMonitor({ intent }: DutchAuctionMonitorProps) {
+  const { auction } = intent;
+  const [currentPrice, setCurrentPrice] = useState<bigint>(auction.startPrice ?? BigInt(0));
   const [progress, setProgress] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+
+  const isActive = isAuctionActive(intent);
+  const hasDutch = isDutchAuction(intent);
 
   useEffect(() => {
-    const fetchAuction = async () => {
-      setIsLoading(true);
-      const data = await getDutchAuction(intentId);
-      setAuction(data);
-      setIsLoading(false);
-    };
-    fetchAuction();
-  }, [intentId]);
+    if (!hasDutch || !isActive) return;
+    if (!auction.startPrice || !auction.endPrice || !auction.startTime || !auction.duration) return;
 
-  useEffect(() => {
-    if (!auction || !auction.isActive) return;
+    const updatePrice = () => {
+      const now = Math.floor(Date.now() / 1000);
+      const elapsed = now - auction.startTime!;
 
-    const updatePrice = async () => {
-      try {
-        const price = await getDutchPrice(intentId);
-        setCurrentPrice(price);
+      // Calculate progress
+      const prog = Math.min((elapsed / auction.duration!) * 100, 100);
+      setProgress(prog);
 
-        const elapsed = Date.now() / 1000 - auction.startTime;
-        const prog = Math.min((elapsed / auction.duration) * 100, 100);
-        setProgress(prog);
-      } catch (error) {
-        console.error('Error fetching Dutch price:', error);
+      // Calculate current price
+      if (elapsed >= auction.duration!) {
+        setCurrentPrice(auction.endPrice!);
+      } else {
+        const priceRange = Number(auction.startPrice! - auction.endPrice!);
+        const priceDrop = (priceRange * elapsed) / auction.duration!;
+        setCurrentPrice(auction.startPrice! - BigInt(Math.floor(priceDrop)));
       }
     };
 
     updatePrice();
     const interval = setInterval(updatePrice, 500);
     return () => clearInterval(interval);
-  }, [auction, intentId]);
+  }, [hasDutch, isActive, auction.startPrice, auction.endPrice, auction.startTime, auction.duration]);
 
-  if (isLoading) {
+  if (!hasDutch) {
     return (
-      <div className="p-4 rounded-lg bg-muted/50 border border-border animate-pulse">
-        <div className="h-4 bg-muted rounded w-1/3 mb-4"></div>
-        <div className="h-8 bg-muted rounded w-full mb-2"></div>
-        <div className="h-2 bg-muted rounded w-full"></div>
+      <div className="p-4 rounded-lg bg-muted/50 border border-border">
+        <p className="text-muted-foreground text-sm">Not a Dutch auction</p>
       </div>
     );
   }
 
-  if (!auction) {
+  if (!auction.startPrice || !auction.endPrice) {
     return (
       <div className="p-4 rounded-lg bg-muted/50 border border-border">
-        <p className="text-muted-foreground text-sm">Auction not found</p>
+        <p className="text-muted-foreground text-sm">Auction data not available</p>
       </div>
     );
   }
@@ -76,7 +71,7 @@ export function DutchAuctionMonitor({ intentId }: DutchAuctionMonitorProps) {
           <Clock className="h-4 w-4 text-amber-400" />
           <span className="text-amber-400 font-medium">Dutch Auction</span>
         </div>
-        {auction.isActive ? (
+        {isActive ? (
           <span className="px-2 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-full">
             Active
           </span>
@@ -107,15 +102,17 @@ export function DutchAuctionMonitor({ intentId }: DutchAuctionMonitorProps) {
           <span className="text-amber-400">{priceDropPercent.toFixed(1)}%</span>
         </div>
 
-        {auction.winner && (
+        {auction.acceptedBy && (
           <div className="pt-2 border-t border-border">
             <span className="text-muted-foreground text-sm">Winner: </span>
             <span className="text-primary font-mono text-xs">
-              {auction.winner.slice(0, 10)}...
+              {auction.acceptedBy.slice(0, 10)}...
             </span>
-            <div className="text-muted-foreground text-sm mt-1">
-              Accepted at: {(Number(auction.acceptedPrice) / 1e8).toFixed(4)}
-            </div>
+            {auction.acceptedPrice && (
+              <div className="text-muted-foreground text-sm mt-1">
+                Accepted at: {(Number(auction.acceptedPrice) / 1e8).toFixed(4)}
+              </div>
+            )}
           </div>
         )}
       </div>

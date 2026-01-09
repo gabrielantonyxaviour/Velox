@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { Badge } from '@/app/components/ui/badge';
 import { Skeleton } from '@/app/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { getIntentTypeDisplay, IntentType } from '@/app/lib/velox/types';
+import { getIntentTypeDisplay, IntentType, hasAuction } from '@/app/lib/velox/types';
 import { MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
 import { TOKENS } from '@/constants/contracts';
 import { ExplorerIntentRow } from '@/app/components/intent/explorer-intent-row';
@@ -75,14 +75,14 @@ export default function ExplorerPage() {
 
   const filteredIntents = useMemo(() => {
     if (filter === 'all') return intents;
-    if (filter === 'auction') return intents.filter(i => i.auctionType);
+    if (filter === 'auction') return intents.filter(i => hasAuction(i));
     // For specific type filters, exclude auction intents
     // (auction swaps should only appear in the Auction tab)
-    return intents.filter(i => i.intentType === filter && !i.auctionType);
+    return intents.filter(i => i.intent.type === filter && !hasAuction(i));
   }, [intents, filter]);
 
   const filledCount = intents.filter(i => i.status === 'filled').length;
-  const pendingCount = intents.filter(i => i.status === 'pending').length;
+  const activeCount = intents.filter(i => i.status === 'active').length;
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -114,9 +114,9 @@ export default function ExplorerPage() {
           </Card>
           <Card>
             <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">Pending</p>
+              <p className="text-xs text-muted-foreground">Active</p>
               {loading ? <Skeleton className="h-6 w-12 mt-1" /> : (
-                <p className="text-xl font-bold">{pendingCount}</p>
+                <p className="text-xl font-bold">{activeCount}</p>
               )}
             </CardContent>
           </Card>

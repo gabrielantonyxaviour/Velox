@@ -160,12 +160,12 @@ export function LimitForm({ onSuccess, onError }: LimitFormProps) {
       if (isPrivy && signRawHash && publicKeyHex) {
         txHash = await submitLimitOrderIntent(
           walletAddress, inputToken.address, outputToken.address, amountIn,
-          priceScaled, expiryTimestamp, partialFill, signRawHash, publicKeyHex
+          priceScaled, expiryTimestamp, signRawHash, publicKeyHex
         );
       } else if (signTransaction && signAndSubmitTransaction) {
         txHash = await submitLimitOrderIntentNative(
           walletAddress, inputToken.address, outputToken.address, amountIn,
-          priceScaled, expiryTimestamp, partialFill, signTransaction, signAndSubmitTransaction
+          priceScaled, expiryTimestamp, signTransaction, signAndSubmitTransaction
         );
       } else {
         throw new Error('No wallet connected');

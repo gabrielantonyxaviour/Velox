@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { IntentRecord, DutchPricePoint } from '@/app/lib/velox/types';
+import {
+  IntentRecord,
+  DutchPricePoint,
+  isDutchAuction,
+  isAuctionActive,
+} from '@/app/lib/velox/types';
 import { Separator } from '../ui/separator';
 import { TrendingDown, Timer, DollarSign, Trophy } from 'lucide-react';
 
@@ -33,20 +38,27 @@ function formatTimeRemaining(seconds: number): string {
 export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
-  const [currentPrice, setCurrentPrice] = useState<bigint>(intent.auctionStartPrice ?? BigInt(0));
+  const { auction } = intent;
+
+  // Use auction state values with fallbacks
+  const startPrice = auction.startPrice ?? BigInt(0);
+  const endPrice = auction.endPrice ?? BigInt(0);
+  const duration = auction.duration ?? 0;
+  const startTime = auction.startTime ?? intent.createdAt;
+  const isActive = isAuctionActive(intent);
+  const purchasePrice = auction.acceptedPrice;
+
+  const [currentPrice, setCurrentPrice] = useState<bigint>(startPrice);
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
   const [elapsedPercent, setElapsedPercent] = useState<number>(0);
 
   // Check if we have valid auction data - no fake defaults
-  const hasValidData = intent.auctionStartPrice && intent.auctionEndPrice && intent.auctionDuration;
+  const hasValidData = auction.startPrice && auction.endPrice && auction.duration;
 
-  const startPrice = intent.auctionStartPrice ?? BigInt(0);
-  const endPrice = intent.auctionEndPrice ?? BigInt(0);
-  const duration = intent.auctionDuration ?? 0;
-  const startTime = intent.auctionStartTime ?? intent.createdAt;
-  const isActive = intent.auctionStatus === 'active';
-  const purchasePrice = intent.auctionAcceptedPrice;
-  const purchaseTime = intent.status === 'filled' ? (intent.auctionEndTime ?? startTime + (duration > 0 ? duration / 2 : 0)) : null;
+  // Calculate purchase time for completed auctions
+  const purchaseTime = intent.status === 'filled' && purchasePrice
+    ? startTime + Math.floor((duration * (Number(startPrice - purchasePrice)) / Number(startPrice - endPrice)))
+    : null;
 
   // Calculate current price based on Dutch auction curve
   const calculateCurrentPrice = useCallback((elapsedSeconds: number): bigint => {
@@ -380,19 +392,19 @@ export function DutchAuctionChart({ intent }: DutchAuctionChartProps) {
         )}
 
         {/* Winner Info */}
-        {intent.auctionWinner && (
+        {auction.acceptedBy && (
           <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/30">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-primary" />
               <span className="text-sm">Winning Solver</span>
             </div>
             <a
-              href={`https://explorer.movementnetwork.xyz/account/${intent.auctionWinner}?network=testnet`}
+              href={`https://explorer.movementnetwork.xyz/account/${auction.acceptedBy}?network=testnet`}
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono text-xs text-primary hover:underline"
             >
-              {truncateAddress(intent.auctionWinner)}
+              {truncateAddress(auction.acceptedBy)}
             </a>
           </div>
         )}

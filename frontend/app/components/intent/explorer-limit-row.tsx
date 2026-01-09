@@ -1,7 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { IntentRecord } from '@/app/lib/velox/types';
+import {
+  IntentRecord,
+  isPartiallyFilled,
+  getFillPercentage,
+  getFilledAmount,
+  getIntentTotalAmount,
+} from '@/app/lib/velox/types';
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
 import { TOKEN_LIST } from '@/app/constants/tokens';
@@ -11,9 +17,8 @@ import {
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-500/10 text-amber-400',
+  active: 'bg-amber-500/10 text-amber-400',
   filled: 'bg-primary/10 text-primary',
-  partially_filled: 'bg-primary/10 text-primary',
   cancelled: 'bg-muted text-muted-foreground',
   expired: 'bg-destructive/10 text-destructive',
 };
@@ -55,26 +60,24 @@ function truncateAddress(addr: string): string {
 }
 
 export function ExplorerLimitRow({ intent }: ExplorerLimitRowProps) {
-  const inputSymbol = getTokenSymbol(intent.inputToken);
-  const outputSymbol = getTokenSymbol(intent.outputToken);
-  const inputDecimals = getTokenDecimals(intent.inputToken);
-  const outputDecimals = getTokenDecimals(intent.outputToken);
+  const { intent: limitIntent } = intent;
+  const inputSymbol = getTokenSymbol(limitIntent.inputToken);
+  const outputSymbol = getTokenSymbol(limitIntent.outputToken);
+  const inputDecimals = getTokenDecimals(limitIntent.inputToken);
+  const outputDecimals = getTokenDecimals(limitIntent.outputToken);
 
   const isFilled = intent.status === 'filled';
-  const isPartiallyFilled = intent.status === 'partially_filled';
-  const isPending = intent.status === 'pending';
-  const isActive = isPending || isPartiallyFilled;
+  const isActive = intent.status === 'active';
+  const hasPartialFill = isPartiallyFilled(intent);
 
-  const limitPrice = intent.limitPrice ?? BigInt(0);
+  const limitPrice = limitIntent.limitPrice ?? BigInt(0);
 
-  // Calculate fill percentage
-  const fillPercentage = intent.amountIn > BigInt(0)
-    ? (Number(intent.filledAmount) / Number(intent.amountIn)) * 100
-    : 0;
+  // Calculate fill percentage from escrow remaining
+  const fillPercentage = getFillPercentage(intent);
 
-  // Time remaining
-  const timeRemaining = isActive && intent.deadline
-    ? Math.max(0, intent.deadline - Math.floor(Date.now() / 1000))
+  // Time remaining (use expiry for limit orders)
+  const timeRemaining = isActive && limitIntent.expiry
+    ? Math.max(0, limitIntent.expiry - Math.floor(Date.now() / 1000))
     : null;
 
   const formatTimeRemaining = (seconds: number): string => {
@@ -83,6 +86,12 @@ export function ExplorerLimitRow({ intent }: ExplorerLimitRowProps) {
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
     return `${Math.floor(seconds / 86400)}d`;
   };
+
+  // Get solver from fills if available
+  const solver = intent.fills.length > 0 ? intent.fills[0].solver : null;
+
+  // Total input amount
+  const totalAmount = getIntentTotalAmount(limitIntent);
 
   return (
     <Link
@@ -94,14 +103,15 @@ export function ExplorerLimitRow({ intent }: ExplorerLimitRowProps) {
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-primary" />
           <Badge className="bg-primary/10 text-primary text-xs">Limit</Badge>
-          {intent.partialFillAllowed && (
+          {/* All limit orders support partial fills now (max 5) */}
+          {hasPartialFill && (
             <Badge className="bg-muted text-muted-foreground text-xs">Partial</Badge>
           )}
           <span className="text-muted-foreground">#{intent.id.toString()}</span>
         </div>
         <div className="flex items-center gap-2">
           <Badge className={STATUS_COLORS[intent.status] + ' text-xs'}>
-            {intent.status.toUpperCase().replace('_', ' ')}
+            {hasPartialFill ? 'PARTIAL' : intent.status.toUpperCase()}
           </Badge>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </div>
@@ -110,11 +120,11 @@ export function ExplorerLimitRow({ intent }: ExplorerLimitRowProps) {
       {/* Order Details Row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{formatAmount(intent.amountIn, inputDecimals)} {inputSymbol}</span>
+          <span className="font-medium">{formatAmount(totalAmount, inputDecimals)} {inputSymbol}</span>
           <ArrowRight className="h-3 w-3 text-muted-foreground" />
-          {isFilled && intent.outputAmount ? (
+          {(isFilled || hasPartialFill) && intent.totalOutputReceived > 0n ? (
             <span className="text-primary font-medium">
-              {formatAmount(intent.outputAmount, outputDecimals)} {outputSymbol}
+              {formatAmount(intent.totalOutputReceived, outputDecimals)} {outputSymbol}
             </span>
           ) : (
             <span>{outputSymbol}</span>
@@ -129,14 +139,14 @@ export function ExplorerLimitRow({ intent }: ExplorerLimitRowProps) {
           </div>
 
           {/* Solver for filled orders */}
-          {isFilled && intent.solver && (
+          {(isFilled || hasPartialFill) && solver && (
             <div className="flex items-center gap-1 text-muted-foreground">
               <User className="h-3 w-3" />
-              <span>{truncateAddress(intent.solver)}</span>
+              <span>{truncateAddress(solver)}</span>
             </div>
           )}
 
-          {/* Time remaining for pending */}
+          {/* Time remaining for active */}
           {isActive && timeRemaining !== null && (
             <div className={`flex items-center gap-1 ${timeRemaining < 3600 ? 'text-amber-400' : 'text-muted-foreground'}`}>
               <Clock className="h-3 w-3" />
@@ -149,7 +159,7 @@ export function ExplorerLimitRow({ intent }: ExplorerLimitRowProps) {
       </div>
 
       {/* Partial Fill Progress */}
-      {(isPartiallyFilled || (intent.partialFillAllowed && fillPercentage > 0)) && (
+      {hasPartialFill && fillPercentage > 0 && (
         <div className="flex items-center gap-2">
           <Progress value={fillPercentage} className="h-1.5 flex-1" />
           <span className="text-xs text-muted-foreground">{fillPercentage.toFixed(0)}%</span>

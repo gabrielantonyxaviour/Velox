@@ -30,7 +30,6 @@ export {
   fetchIntentEvents,
   getIntentEventData,
   clearEventCache,
-  clearPeriodFillCache,
 } from './queries';
 
 // Auction Storage
