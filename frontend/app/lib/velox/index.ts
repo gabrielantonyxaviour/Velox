@@ -30,7 +30,15 @@ export {
   fetchIntentEvents,
   getIntentEventData,
   clearEventCache,
+  clearPeriodFillCache,
 } from './queries';
+
+// Auction Storage
+export {
+  clearAllAuctionStorage,
+  storeAuctionIntent,
+  getStoredAuctionInfo,
+} from './auction-storage';
 
 // Contract Reads (Solver, Scheduled, Settlement)
 export type { SolverStats, ScheduledIntentInfo } from './contract-reads';

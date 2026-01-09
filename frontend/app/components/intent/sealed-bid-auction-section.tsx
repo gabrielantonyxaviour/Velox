@@ -115,12 +115,14 @@ export function SealedBidAuctionSection({ intent }: SealedBidAuctionSectionProps
                 <div className="text-center py-6 px-3">
                   <Info className="h-5 w-5 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">
-                    Bid details are sealed until auction ends
+                    {isActive
+                      ? 'Bid details are sealed until auction ends'
+                      : 'Bid history not available on-chain'}
                   </p>
                   <p className="text-xs text-muted-foreground/70 mt-1">
-                    {bidCount > 0
-                      ? `${bidCount} bid${bidCount > 1 ? 's' : ''} submitted`
-                      : 'No bids yet'}
+                    {isActive
+                      ? (bidCount > 0 ? `${bidCount} bid${bidCount > 1 ? 's' : ''} submitted` : 'No bids yet')
+                      : (intent.auctionWinner ? 'Winner shown below' : 'Auction completed')}
                   </p>
                 </div>
               ) : (
