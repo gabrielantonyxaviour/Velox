@@ -34,7 +34,7 @@ const FREQUENCY_OPTIONS = [
 ];
 
 export function DCAForm({ onSuccess, onError }: DCAFormProps) {
-  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
   const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
@@ -142,7 +142,7 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
           signRawHash,
           publicKeyHex
         );
-      } else if (signAndSubmitTransaction) {
+      } else if (signTransaction && signAndSubmitTransaction) {
         txHash = await submitDCAIntentNative(
           walletAddress,
           inputToken.address,
@@ -150,6 +150,7 @@ export function DCAForm({ onSuccess, onError }: DCAFormProps) {
           amount,
           totalPeriods,
           intervalSeconds,
+          signTransaction,
           signAndSubmitTransaction
         );
       } else {

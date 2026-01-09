@@ -30,7 +30,7 @@ const EXPIRY_OPTIONS = [
 ];
 
 export function LimitForm({ onSuccess, onError }: LimitFormProps) {
-  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
   const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
@@ -158,10 +158,10 @@ export function LimitForm({ onSuccess, onError }: LimitFormProps) {
           walletAddress, inputToken.address, outputToken.address, amountIn,
           priceScaled, expiryTimestamp, partialFill, signRawHash, publicKeyHex
         );
-      } else if (signAndSubmitTransaction) {
+      } else if (signTransaction && signAndSubmitTransaction) {
         txHash = await submitLimitOrderIntentNative(
           walletAddress, inputToken.address, outputToken.address, amountIn,
-          priceScaled, expiryTimestamp, partialFill, signAndSubmitTransaction
+          priceScaled, expiryTimestamp, partialFill, signTransaction, signAndSubmitTransaction
         );
       } else {
         throw new Error('No wallet connected');

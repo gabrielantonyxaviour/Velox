@@ -36,7 +36,7 @@ const INTERVAL_OPTIONS = [
 const SLIPPAGE_OPTIONS = [0.1, 0.5, 1.0, 2.0];
 
 export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
-  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
   const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
@@ -152,7 +152,7 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
           signRawHash,
           publicKeyHex
         );
-      } else if (signAndSubmitTransaction) {
+      } else if (signTransaction && signAndSubmitTransaction) {
         txHash = await submitTWAPIntentNative(
           walletAddress,
           inputToken.address,
@@ -162,6 +162,7 @@ export function TWAPForm({ onSuccess, onError }: TWAPFormProps) {
           intervalSeconds,
           maxSlippageBps,
           startTime,
+          signTransaction,
           signAndSubmitTransaction
         );
       } else {

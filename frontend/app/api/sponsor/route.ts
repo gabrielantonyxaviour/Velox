@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 // Shinami Gas Station API endpoint for Movement
 const SHINAMI_GAS_STATION_URL = 'https://api.shinami.com/movement/gas/v1/';
 
+/**
+ * Sponsor and submit a signed transaction
+ * Uses gas_sponsorAndSubmitSignedTransaction - the recommended approach
+ * This sets the fee payer address and submits in one call
+ */
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.SHINAMI_KEY;
@@ -14,16 +19,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { rawTxHex } = await request.json();
+    const { rawTxHex, senderAuthenticatorHex } = await request.json();
 
-    if (!rawTxHex) {
+    if (!rawTxHex || !senderAuthenticatorHex) {
       return NextResponse.json(
-        { success: false, error: 'Missing rawTxHex' },
+        { success: false, error: 'Missing rawTxHex or senderAuthenticatorHex' },
         { status: 400 }
       );
     }
 
-    // Call Shinami Gas Station API
+    // Format hex strings
+    const formattedTxHex = rawTxHex.startsWith('0x') ? rawTxHex : `0x${rawTxHex}`;
+    const formattedAuthHex = senderAuthenticatorHex.startsWith('0x')
+      ? senderAuthenticatorHex
+      : `0x${senderAuthenticatorHex}`;
+
+    // Call Shinami Gas Station API with gas_sponsorAndSubmitSignedTransaction
+    // This method sponsors the transaction, sets the fee payer address, and submits it
     const response = await fetch(SHINAMI_GAS_STATION_URL, {
       method: 'POST',
       headers: {
@@ -32,8 +44,8 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        method: 'gas_sponsorTransaction',
-        params: [rawTxHex.startsWith('0x') ? rawTxHex : `0x${rawTxHex}`],
+        method: 'gas_sponsorAndSubmitSignedTransaction',
+        params: [formattedTxHex, formattedAuthHex],
         id: 1,
       }),
     });
@@ -57,9 +69,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Result contains PendingTransactionResponse with hash
     return NextResponse.json({
       success: true,
-      feePayer: result.result.feePayer,
+      hash: result.result.hash,
+      pendingTransaction: result.result,
     });
   } catch (error) {
     console.error('[Sponsor API] Error:', error);

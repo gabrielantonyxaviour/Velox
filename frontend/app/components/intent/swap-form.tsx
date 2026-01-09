@@ -29,7 +29,7 @@ const DEADLINE_OPTIONS = [
 const DEFAULT_SLIPPAGE = 0.5; // 0.5%
 
 export function SwapForm({ onSuccess, onError }: SwapFormProps) {
-  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signAndSubmitTransaction } = useWalletContext();
+  const { walletAddress, isPrivy, isConnected, signRawHash, publicKeyHex, signTransaction, signAndSubmitTransaction } = useWalletContext();
   const txConfirm = useTransactionConfirm();
 
   const [inputToken, setInputToken] = useState<Token | null>(null);
@@ -179,7 +179,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
           signRawHash,
           publicKeyHex
         );
-      } else if (signAndSubmitTransaction) {
+      } else if (signTransaction && signAndSubmitTransaction) {
         txHash = await submitSwapIntentNative(
           walletAddress,
           inputToken.address,
@@ -187,6 +187,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
           amountIn,
           minAmountOut,
           deadlineTimestamp,
+          signTransaction,
           signAndSubmitTransaction
         );
       } else {
