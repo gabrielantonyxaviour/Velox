@@ -14,10 +14,13 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MarketMakerStrategy = exports.ArbitrageStrategy = exports.BaseStrategy = exports.VeloxGraphQLClient = exports.VeloxAptosClient = exports.VeloxSolver = void 0;
+exports.MarketMakerStrategy = exports.ArbitrageStrategy = exports.BaseStrategy = exports.VeloxGraphQLClient = exports.VeloxAptosClient = exports.SolverConfig = exports.VeloxSolver = void 0;
 // Main exports
 var VeloxSolver_1 = require("./VeloxSolver");
 Object.defineProperty(exports, "VeloxSolver", { enumerable: true, get: function () { return VeloxSolver_1.VeloxSolver; } });
+// Configuration
+var config_1 = require("./config");
+Object.defineProperty(exports, "SolverConfig", { enumerable: true, get: function () { return config_1.SolverConfig; } });
 // Types
 __exportStar(require("./types"), exports);
 // Client

@@ -1,5 +1,5 @@
 {
-  "name": "@velox/solver-sdk",
+  "name": "@velox-movement/solver",
   "version": "1.0.0",
   "description": "TypeScript SDK for running Velox solvers on Movement Network",
   "main": "dist/index.js",
