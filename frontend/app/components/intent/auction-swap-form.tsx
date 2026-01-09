@@ -7,6 +7,7 @@ import { TokenSelector } from './token-selector';
 import { AmountInput } from './amount-input';
 import { AuctionTypeSelector } from './auction-type-selector';
 import { DutchParamsInput } from './dutch-params-input';
+import { DutchAuctionPreview } from './dutch-auction-preview';
 import { Token, TOKEN_LIST } from '@/app/constants/tokens';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
 import {
@@ -365,13 +366,24 @@ export function AuctionSwapForm({ onSuccess, onError }: AuctionSwapFormProps) {
             </div>
           </div>
         ) : (
-          <DutchParamsInput
-            startPriceMultiplier={dutchStartMultiplier}
-            duration={dutchDuration}
-            onStartPriceChange={setDutchStartMultiplier}
-            onDurationChange={setDutchDuration}
-            basePrice={minAmountOutBigInt}
-          />
+          <>
+            <DutchParamsInput
+              startPriceMultiplier={dutchStartMultiplier}
+              duration={dutchDuration}
+              onStartPriceChange={setDutchStartMultiplier}
+              onDurationChange={setDutchDuration}
+              basePrice={minAmountOutBigInt}
+            />
+            {/* Dutch Auction Price Curve Preview */}
+            {minOutputAmount && parseFloat(minOutputAmount) > 0 && (
+              <DutchAuctionPreview
+                startPrice={(parseFloat(minOutputAmount) * dutchStartMultiplier) / 100}
+                endPrice={parseFloat(minOutputAmount)}
+                duration={dutchDuration}
+                outputSymbol={outputToken?.symbol}
+              />
+            )}
+          </>
         )}
 
         {/* Deadline */}
