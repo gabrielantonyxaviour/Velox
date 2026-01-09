@@ -32,6 +32,8 @@ module velox::errors {
     const ENOT_OWNER: u64 = 31;
     const ENOT_INTENT_OWNER: u64 = 32;
     const ENOT_ADMIN: u64 = 33;
+    const EUNAUTHORIZED: u64 = 34;
+    const EALREADY_INITIALIZED: u64 = 35;
 
     // Time errors
     const EDEADLINE_PASSED: u64 = 40;
@@ -125,6 +127,8 @@ module velox::errors {
     public fun not_owner(): u64 { ENOT_OWNER }
     public fun not_intent_owner(): u64 { ENOT_INTENT_OWNER }
     public fun not_admin(): u64 { ENOT_ADMIN }
+    public fun unauthorized(): u64 { EUNAUTHORIZED }
+    public fun already_initialized(): u64 { EALREADY_INITIALIZED }
 
     // Time error getters
     public fun deadline_passed(): u64 { EDEADLINE_PASSED }

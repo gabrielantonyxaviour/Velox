@@ -1,5 +1,6 @@
 /// Settlement Module for Velox
 /// Handles solution selection and trade execution (MVP: self-solving)
+/// Collects protocol fees from input tokens (maker amount)
 module velox::settlement {
     use std::signer;
     use std::vector;
@@ -18,14 +19,46 @@ module velox::settlement {
 
     // ============ Constants ============
 
-    /// Protocol fee in basis points (0.03%)
+    /// Protocol fee in basis points (0.03% = 3 bps)
     const PROTOCOL_FEE_BPS: u64 = 3;
-    /// Solver fee in basis points (0.05%)
+    /// Solver fee in basis points (0.05% = 5 bps) - informational, not collected
     const SOLVER_FEE_BPS: u64 = 5;
     /// Basis points denominator
     const BPS_DENOMINATOR: u64 = 10000;
 
+    // ============ Resources ============
+
+    /// Fee collector configuration - stores treasury address
+    struct FeeCollector has key {
+        /// Address that receives protocol fees
+        treasury: address,
+        /// Admin who can update treasury
+        admin: address,
+        /// Total fees collected (tracking only, actual tokens in treasury)
+        total_collected: u64
+    }
+
     // ============ Events ============
+
+    #[event]
+    struct FeeCollectorInitialized has drop, store {
+        treasury: address,
+        admin: address
+    }
+
+    #[event]
+    struct TreasuryUpdated has drop, store {
+        old_treasury: address,
+        new_treasury: address
+    }
+
+    #[event]
+    struct ProtocolFeeCollected has drop, store {
+        intent_id: u64,
+        token: address,
+        amount: u64,
+        treasury: address
+    }
 
     #[event]
     struct IntentFilled has drop, store {
@@ -97,16 +130,60 @@ module velox::settlement {
         settled_at: u64
     }
 
+    // ============ Initialization ============
+
+    /// Initialize the fee collector with treasury address
+    public entry fun initialize_fee_collector(
+        admin: &signer,
+        treasury: address
+    ) {
+        let admin_addr = signer::address_of(admin);
+
+        assert!(!exists<FeeCollector>(admin_addr), errors::already_initialized());
+
+        move_to(admin, FeeCollector {
+            treasury,
+            admin: admin_addr,
+            total_collected: 0
+        });
+
+        event::emit(FeeCollectorInitialized {
+            treasury,
+            admin: admin_addr
+        });
+    }
+
+    /// Update treasury address (admin only)
+    public entry fun update_treasury(
+        admin: &signer,
+        fee_collector_addr: address,
+        new_treasury: address
+    ) acquires FeeCollector {
+        let admin_addr = signer::address_of(admin);
+        let fee_collector = borrow_global_mut<FeeCollector>(fee_collector_addr);
+
+        assert!(fee_collector.admin == admin_addr, errors::unauthorized());
+
+        let old_treasury = fee_collector.treasury;
+        fee_collector.treasury = new_treasury;
+
+        event::emit(TreasuryUpdated {
+            old_treasury,
+            new_treasury
+        });
+    }
+
     // ============ Entry Functions ============
 
     /// Solve a swap intent by providing the output amount
-    /// MVP: Self-solving - solver provides output tokens directly
+    /// Protocol fee is collected from input tokens (maker amount)
     public entry fun solve_swap(
         solver: &signer,
         registry_addr: address,
+        fee_collector_addr: address,
         intent_id: u64,
         output_amount: u64
-    ) {
+    ) acquires FeeCollector {
         let solver_addr = signer::address_of(solver);
         let record = submission::get_intent_record(registry_addr, intent_id);
 
@@ -126,14 +203,9 @@ module velox::settlement {
         // Verify this is a swap intent
         assert!(types::is_swap(intent), errors::solution_invalid());
 
-        // Verify output meets minimum
+        // Verify output meets minimum (user gets full output, no fee deduction)
         let min_amount_out = types::get_min_amount_out(intent);
-        let user_output = calculate_user_output_internal(output_amount);
-        assert!(user_output >= min_amount_out, errors::min_amount_not_met());
-
-        // Calculate fees
-        let protocol_fee = calculate_fee(output_amount, PROTOCOL_FEE_BPS);
-        let solver_fee = calculate_fee(output_amount, SOLVER_FEE_BPS);
+        assert!(output_amount >= min_amount_out, errors::min_amount_not_met());
 
         // Get intent details
         let user = types::get_intent_user(&record);
@@ -141,12 +213,27 @@ module velox::settlement {
         let input_token = types::get_input_token(intent);
         let output_token = types::get_output_token(intent);
 
-        // Transfer output tokens from solver to user (minus fees)
-        let output_token_obj = object::address_to_object<Metadata>(output_token);
-        primary_fungible_store::transfer(solver, output_token_obj, user, user_output);
+        // Calculate protocol fee from input amount
+        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
+        let solver_receives = input_amount - protocol_fee;
 
-        // Transfer escrowed input tokens from escrow to solver
-        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, input_amount);
+        // Transfer output tokens from solver to user (full amount)
+        let output_token_obj = object::address_to_object<Metadata>(output_token);
+        primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
+
+        // Collect protocol fee - transfer to treasury
+        if (protocol_fee > 0) {
+            collect_protocol_fee(
+                registry_addr,
+                fee_collector_addr,
+                input_token,
+                protocol_fee,
+                intent_id
+            );
+        };
+
+        // Transfer remaining input tokens from escrow to solver
+        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, solver_receives);
 
         // Calculate execution price (basis points: output per input * 10000)
         let execution_price = if (input_amount > 0) {
@@ -173,7 +260,7 @@ module velox::settlement {
             output_amount,
             execution_price,
             protocol_fee,
-            solver_fee,
+            solver_fee: 0, // Solver fee is now implicit (solver's profit margin)
             filled_at: now
         });
     }
@@ -182,10 +269,11 @@ module velox::settlement {
     public entry fun solve_limit_order(
         solver: &signer,
         registry_addr: address,
+        fee_collector_addr: address,
         intent_id: u64,
         fill_amount: u64,
         output_amount: u64
-    ) {
+    ) acquires FeeCollector {
         let solver_addr = signer::address_of(solver);
         let record = submission::get_intent_record(registry_addr, intent_id);
 
@@ -228,15 +316,27 @@ module velox::settlement {
         let execution_price = (output_amount * BPS_DENOMINATOR) / fill_amount;
         assert!(execution_price >= limit_price, errors::min_amount_not_met());
 
-        // Calculate user output after fees
-        let user_output = calculate_user_output_internal(output_amount);
+        // Calculate protocol fee from fill amount
+        let protocol_fee = calculate_fee(fill_amount, PROTOCOL_FEE_BPS);
+        let solver_receives = fill_amount - protocol_fee;
 
-        // Transfer output tokens from solver to user
+        // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
-        primary_fungible_store::transfer(solver, output_token_obj, user, user_output);
+        primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Transfer input tokens from escrow to solver
-        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, fill_amount);
+        // Collect protocol fee
+        if (protocol_fee > 0) {
+            collect_protocol_fee(
+                registry_addr,
+                fee_collector_addr,
+                input_token,
+                protocol_fee,
+                intent_id
+            );
+        };
+
+        // Transfer remaining input tokens from escrow to solver
+        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, solver_receives);
 
         let new_filled_amount = already_filled + fill_amount;
         let is_fully_filled = new_filled_amount == total_amount_in;
@@ -251,9 +351,6 @@ module velox::settlement {
                 execution_price
             );
 
-            let protocol_fee = calculate_fee(output_amount, PROTOCOL_FEE_BPS);
-            let solver_fee = calculate_fee(output_amount, SOLVER_FEE_BPS);
-
             event::emit(IntentFilled {
                 intent_id,
                 user,
@@ -262,7 +359,7 @@ module velox::settlement {
                 output_amount,
                 execution_price,
                 protocol_fee,
-                solver_fee,
+                solver_fee: 0,
                 filled_at: now
             });
         } else {
@@ -283,10 +380,11 @@ module velox::settlement {
     public entry fun solve_twap_chunk(
         solver: &signer,
         registry_addr: address,
+        fee_collector_addr: address,
         scheduled_registry_addr: address,
         intent_id: u64,
         output_amount: u64
-    ) {
+    ) acquires FeeCollector {
         let solver_addr = signer::address_of(solver);
         let record = submission::get_intent_record(registry_addr, intent_id);
 
@@ -317,17 +415,31 @@ module velox::settlement {
         let num_chunks = types::get_twap_num_chunks(intent);
         let chunks_executed = scheduled::get_chunks_executed(scheduled_registry_addr, intent_id);
 
-        // Calculate user output and verify slippage
-        let user_output = calculate_user_output_internal(output_amount);
+        // Verify output meets slippage requirements
         let min_output = chunk_amount - ((chunk_amount * max_slippage_bps) / BPS_DENOMINATOR);
-        assert!(user_output >= min_output, errors::min_amount_not_met());
+        assert!(output_amount >= min_output, errors::min_amount_not_met());
 
-        // Transfer output tokens from solver to user (minus fees)
+        // Calculate protocol fee from chunk amount
+        let protocol_fee = calculate_fee(chunk_amount, PROTOCOL_FEE_BPS);
+        let solver_receives = chunk_amount - protocol_fee;
+
+        // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
-        primary_fungible_store::transfer(solver, output_token_obj, user, user_output);
+        primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Transfer chunk input from escrow to solver
-        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, chunk_amount);
+        // Collect protocol fee
+        if (protocol_fee > 0) {
+            collect_protocol_fee(
+                registry_addr,
+                fee_collector_addr,
+                input_token,
+                protocol_fee,
+                intent_id
+            );
+        };
+
+        // Transfer remaining chunk input from escrow to solver
+        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, solver_receives);
 
         // Update scheduled registry
         scheduled::update_after_execution(scheduled_registry_addr, intent_id, interval_seconds);
@@ -342,7 +454,7 @@ module velox::settlement {
             chunk_number: chunks_executed + 1,
             total_chunks: num_chunks,
             chunk_input: chunk_amount,
-            chunk_output: user_output,
+            chunk_output: output_amount,
             filled_at: now
         });
     }
@@ -351,10 +463,11 @@ module velox::settlement {
     public entry fun solve_dca_period(
         solver: &signer,
         registry_addr: address,
+        fee_collector_addr: address,
         scheduled_registry_addr: address,
         intent_id: u64,
         output_amount: u64
-    ) {
+    ) acquires FeeCollector {
         let solver_addr = signer::address_of(solver);
         let record = submission::get_intent_record(registry_addr, intent_id);
 
@@ -384,15 +497,27 @@ module velox::settlement {
         let total_periods = types::get_dca_total_periods(intent);
         let periods_executed = scheduled::get_chunks_executed(scheduled_registry_addr, intent_id);
 
-        // Calculate user output
-        let user_output = calculate_user_output_internal(output_amount);
+        // Calculate protocol fee from period amount
+        let protocol_fee = calculate_fee(amount_per_period, PROTOCOL_FEE_BPS);
+        let solver_receives = amount_per_period - protocol_fee;
 
-        // Transfer output tokens from solver to user (minus fees)
+        // Transfer output tokens from solver to user (full amount)
         let output_token_obj = object::address_to_object<Metadata>(output_token);
-        primary_fungible_store::transfer(solver, output_token_obj, user, user_output);
+        primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
 
-        // Transfer period input from escrow to solver
-        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, amount_per_period);
+        // Collect protocol fee
+        if (protocol_fee > 0) {
+            collect_protocol_fee(
+                registry_addr,
+                fee_collector_addr,
+                input_token,
+                protocol_fee,
+                intent_id
+            );
+        };
+
+        // Transfer remaining period input from escrow to solver
+        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, solver_receives);
 
         // Update scheduled registry
         scheduled::update_after_execution(scheduled_registry_addr, intent_id, interval_seconds);
@@ -407,7 +532,7 @@ module velox::settlement {
             period_number: periods_executed + 1,
             total_periods,
             period_input: amount_per_period,
-            period_output: user_output,
+            period_output: output_amount,
             filled_at: now
         });
     }
@@ -417,9 +542,10 @@ module velox::settlement {
     public entry fun settle_from_auction(
         solver: &signer,
         registry_addr: address,
+        fee_collector_addr: address,
         auction_state_addr: address,
         intent_id: u64
-    ) {
+    ) acquires FeeCollector {
         let solver_addr = signer::address_of(solver);
 
         // Verify solver is the auction winner
@@ -456,12 +582,7 @@ module velox::settlement {
 
         // Verify output meets minimum
         let min_amount_out = types::get_min_amount_out(intent);
-        let user_output = calculate_user_output_internal(output_amount);
-        assert!(user_output >= min_amount_out, errors::min_amount_not_met());
-
-        // Calculate fees
-        let protocol_fee = calculate_fee(output_amount, PROTOCOL_FEE_BPS);
-        let solver_fee = calculate_fee(output_amount, SOLVER_FEE_BPS);
+        assert!(output_amount >= min_amount_out, errors::min_amount_not_met());
 
         // Get intent details
         let user = types::get_intent_user(&record);
@@ -469,12 +590,27 @@ module velox::settlement {
         let input_token = types::get_input_token(intent);
         let output_token = types::get_output_token(intent);
 
-        // Transfer output tokens from solver to user (minus fees)
-        let output_token_obj = object::address_to_object<Metadata>(output_token);
-        primary_fungible_store::transfer(solver, output_token_obj, user, user_output);
+        // Calculate protocol fee from input amount
+        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
+        let solver_receives = input_amount - protocol_fee;
 
-        // Transfer escrowed input tokens from escrow to solver
-        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, input_amount);
+        // Transfer output tokens from solver to user (full amount)
+        let output_token_obj = object::address_to_object<Metadata>(output_token);
+        primary_fungible_store::transfer(solver, output_token_obj, user, output_amount);
+
+        // Collect protocol fee
+        if (protocol_fee > 0) {
+            collect_protocol_fee(
+                registry_addr,
+                fee_collector_addr,
+                input_token,
+                protocol_fee,
+                intent_id
+            );
+        };
+
+        // Transfer remaining input tokens from escrow to solver
+        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, solver_receives);
 
         // Calculate execution price (basis points: output per input * 10000)
         let execution_price = if (input_amount > 0) {
@@ -501,7 +637,7 @@ module velox::settlement {
             output_amount,
             execution_price,
             protocol_fee,
-            solver_fee,
+            solver_fee: 0,
             filled_at: now
         });
     }
@@ -511,12 +647,13 @@ module velox::settlement {
     public entry fun solve_with_routing(
         solver: &signer,
         registry_addr: address,
+        fee_collector_addr: address,
         router_addr: address,
         intent_id: u64,
         route_input: u64,
         route_output: u64,
         route_price_impact_bps: u64
-    ) {
+    ) acquires FeeCollector {
         let solver_addr = signer::address_of(solver);
         let record = submission::get_intent_record(registry_addr, intent_id);
 
@@ -541,8 +678,7 @@ module velox::settlement {
 
         // Verify output meets minimum
         let min_amount_out = types::get_min_amount_out(intent);
-        let user_output = calculate_user_output_internal(route_output);
-        assert!(user_output >= min_amount_out, errors::min_amount_not_met());
+        assert!(route_output >= min_amount_out, errors::min_amount_not_met());
 
         // Get intent details
         let user = types::get_intent_user(&record);
@@ -553,12 +689,27 @@ module velox::settlement {
         // Verify route input matches escrowed amount
         assert!(route_input == input_amount, errors::insufficient_input_amount());
 
-        // Transfer output tokens from solver to user (minus fees)
-        let output_token_obj = object::address_to_object<Metadata>(output_token);
-        primary_fungible_store::transfer(solver, output_token_obj, user, user_output);
+        // Calculate protocol fee from input amount
+        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
+        let solver_receives = input_amount - protocol_fee;
 
-        // Transfer escrowed input tokens from escrow to solver
-        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, input_amount);
+        // Transfer output tokens from solver to user (full amount)
+        let output_token_obj = object::address_to_object<Metadata>(output_token);
+        primary_fungible_store::transfer(solver, output_token_obj, user, route_output);
+
+        // Collect protocol fee
+        if (protocol_fee > 0) {
+            collect_protocol_fee(
+                registry_addr,
+                fee_collector_addr,
+                input_token,
+                protocol_fee,
+                intent_id
+            );
+        };
+
+        // Transfer remaining input tokens from escrow to solver
+        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, solver_receives);
 
         // Calculate execution price
         let execution_price = if (input_amount > 0) {
@@ -591,7 +742,7 @@ module velox::settlement {
         // Emit route executed event via router
         let steps = vector::empty();
         let route = router::new_route(steps, route_input, route_output, route_price_impact_bps);
-        router::emit_route_executed(intent_id, &route, user_output);
+        router::emit_route_executed(intent_id, &route, route_output);
 
         // Suppress unused variable warning
         let _ = router_addr;
@@ -602,9 +753,10 @@ module velox::settlement {
     public entry fun settle_dutch_auction(
         solver: &signer,
         registry_addr: address,
+        fee_collector_addr: address,
         auction_state_addr: address,
         intent_id: u64
-    ) {
+    ) acquires FeeCollector {
         let solver_addr = signer::address_of(solver);
 
         // Verify solver is the Dutch auction winner
@@ -635,10 +787,9 @@ module velox::settlement {
         // Verify this is a swap intent
         assert!(types::is_swap(intent), errors::solution_invalid());
 
-        // Verify output meets minimum (accepted_price should be >= min_amount_out)
+        // Verify output meets minimum
         let min_amount_out = types::get_min_amount_out(intent);
-        let user_output = calculate_user_output_internal(accepted_price);
-        assert!(user_output >= min_amount_out, errors::min_amount_not_met());
+        assert!(accepted_price >= min_amount_out, errors::min_amount_not_met());
 
         // Get intent details
         let user = types::get_intent_user(&record);
@@ -646,12 +797,27 @@ module velox::settlement {
         let input_token = types::get_input_token(intent);
         let output_token = types::get_output_token(intent);
 
-        // Transfer output tokens from solver to user (minus fees)
-        let output_token_obj = object::address_to_object<Metadata>(output_token);
-        primary_fungible_store::transfer(solver, output_token_obj, user, user_output);
+        // Calculate protocol fee from input amount
+        let protocol_fee = calculate_fee(input_amount, PROTOCOL_FEE_BPS);
+        let solver_receives = input_amount - protocol_fee;
 
-        // Transfer escrowed input tokens from escrow to solver
-        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, input_amount);
+        // Transfer output tokens from solver to user (full amount)
+        let output_token_obj = object::address_to_object<Metadata>(output_token);
+        primary_fungible_store::transfer(solver, output_token_obj, user, accepted_price);
+
+        // Collect protocol fee
+        if (protocol_fee > 0) {
+            collect_protocol_fee(
+                registry_addr,
+                fee_collector_addr,
+                input_token,
+                protocol_fee,
+                intent_id
+            );
+        };
+
+        // Transfer remaining input tokens from escrow to solver
+        submission::transfer_from_escrow(registry_addr, input_token, solver_addr, solver_receives);
 
         // Calculate execution price (basis points: output per input * 10000)
         let execution_price = if (input_amount > 0) {
@@ -682,15 +848,35 @@ module velox::settlement {
 
     // ============ Internal Functions ============
 
+    /// Collect protocol fee and transfer to treasury
+    fun collect_protocol_fee(
+        registry_addr: address,
+        fee_collector_addr: address,
+        token: address,
+        amount: u64,
+        intent_id: u64
+    ) acquires FeeCollector {
+        let fee_collector = borrow_global_mut<FeeCollector>(fee_collector_addr);
+        let treasury = fee_collector.treasury;
+
+        // Transfer fee from escrow to treasury
+        submission::transfer_from_escrow(registry_addr, token, treasury, amount);
+
+        // Update total collected (for tracking)
+        fee_collector.total_collected = fee_collector.total_collected + amount;
+
+        // Emit fee collection event
+        event::emit(ProtocolFeeCollected {
+            intent_id,
+            token,
+            amount,
+            treasury
+        });
+    }
+
     /// Calculate fee amount given gross amount and fee in basis points
     fun calculate_fee(gross_amount: u64, fee_bps: u64): u64 {
         (gross_amount * fee_bps) / BPS_DENOMINATOR
-    }
-
-    /// Calculate user output after deducting protocol and solver fees
-    fun calculate_user_output_internal(gross_output: u64): u64 {
-        let total_fee_bps = PROTOCOL_FEE_BPS + SOLVER_FEE_BPS;
-        gross_output - ((gross_output * total_fee_bps) / BPS_DENOMINATOR)
     }
 
     // ============ View Functions ============
@@ -702,15 +888,33 @@ module velox::settlement {
     }
 
     #[view]
-    /// Get solver fee in basis points
+    /// Get solver fee in basis points (informational)
     public fun get_solver_fee_bps(): u64 {
         SOLVER_FEE_BPS
     }
 
     #[view]
-    /// Calculate user output after fees for a given gross output
-    public fun calculate_user_output(gross_output: u64): u64 {
-        calculate_user_output_internal(gross_output)
+    /// Get fee collector treasury address
+    public fun get_treasury(fee_collector_addr: address): address acquires FeeCollector {
+        borrow_global<FeeCollector>(fee_collector_addr).treasury
+    }
+
+    #[view]
+    /// Get total fees collected
+    public fun get_total_collected(fee_collector_addr: address): u64 acquires FeeCollector {
+        borrow_global<FeeCollector>(fee_collector_addr).total_collected
+    }
+
+    #[view]
+    /// Check if fee collector is initialized
+    public fun is_fee_collector_initialized(addr: address): bool {
+        exists<FeeCollector>(addr)
+    }
+
+    #[view]
+    /// Calculate protocol fee for a given input amount
+    public fun calculate_protocol_fee(input_amount: u64): u64 {
+        calculate_fee(input_amount, PROTOCOL_FEE_BPS)
     }
 
     #[view]
@@ -736,11 +940,10 @@ module velox::settlement {
             return false
         };
 
-        // Check output meets minimum for swaps
+        // Check output meets minimum for swaps (no fee deduction now)
         if (types::is_swap(intent)) {
             let min_amount_out = types::get_min_amount_out(intent);
-            let user_output = calculate_user_output_internal(output_amount);
-            if (user_output < min_amount_out) {
+            if (output_amount < min_amount_out) {
                 return false
             };
         };
