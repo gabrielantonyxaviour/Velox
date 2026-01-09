@@ -76,7 +76,9 @@ export default function ExplorerPage() {
   const filteredIntents = useMemo(() => {
     if (filter === 'all') return intents;
     if (filter === 'auction') return intents.filter(i => i.auctionType);
-    return intents.filter(i => i.intentType === filter);
+    // For specific type filters, exclude auction intents
+    // (auction swaps should only appear in the Auction tab)
+    return intents.filter(i => i.intentType === filter && !i.auctionType);
   }, [intents, filter]);
 
   const filledCount = intents.filter(i => i.status === 'filled').length;
