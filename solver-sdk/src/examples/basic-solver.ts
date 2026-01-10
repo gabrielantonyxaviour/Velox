@@ -27,8 +27,8 @@ async function main() {
     console.error('Solver error:', error.message);
   });
 
-  // Listen for new intents
-  solver.startIntentStream(async (record: IntentRecord) => {
+  // Listen for new intents - validates registration before starting
+  await solver.startIntentStream(async (record: IntentRecord) => {
     console.log(`\n=== New Intent Detected ===`);
     console.log(`ID: ${record.id}`);
     console.log(`Type: ${record.intent.type}`);

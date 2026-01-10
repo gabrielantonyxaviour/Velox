@@ -45,7 +45,8 @@ class AdvancedSolver {
       console.error('Solver error:', error.message);
     });
 
-    this.solver.startIntentStream((intent) => this.handleIntent(intent));
+    // Validates registration before starting
+    await this.solver.startIntentStream((intent) => this.handleIntent(intent));
   }
 
   stop(): void {
