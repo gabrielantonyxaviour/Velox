@@ -292,14 +292,19 @@ export async function canFill(
  * Get protocol fee in basis points (e.g., 30 = 0.3%)
  */
 export async function getProtocolFeeBps(): Promise<number> {
-  const result = await aptos.view({
-    payload: {
-      function: `${VELOX_ADDRESS}::settlement::get_protocol_fee_bps`,
-      typeArguments: [],
-      functionArguments: [],
-    },
-  });
-  return Number(result[0]);
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::settlement::get_fee_bps`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS],
+      },
+    });
+    return Number(result[0]);
+  } catch (error) {
+    console.warn('Failed to fetch protocol fee, using default 500 bps:', error);
+    return 500; // Default to 5% (500 bps)
+  }
 }
 
 /**
