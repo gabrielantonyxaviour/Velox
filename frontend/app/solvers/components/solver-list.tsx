@@ -76,12 +76,16 @@ function SolverRow({ solver }: { solver: SolverListItem }) {
             <>
               <p className="font-bold text-sm truncate text-foreground">{solver.name}</p>
               <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">
-                {solver.address.slice(0, 10)}...{solver.address.slice(-8)}
+                {solver.operatorWallet
+                  ? `${solver.operatorWallet.slice(0, 10)}...${solver.operatorWallet.slice(-8)}`
+                  : `${solver.address.slice(0, 10)}...${solver.address.slice(-8)}`}
               </p>
             </>
           ) : (
             <p className="font-mono text-sm truncate text-foreground">
-              {solver.address.slice(0, 10)}...{solver.address.slice(-8)}
+              {solver.operatorWallet
+                ? `${solver.operatorWallet.slice(0, 10)}...${solver.operatorWallet.slice(-8)}`
+                : `${solver.address.slice(0, 10)}...${solver.address.slice(-8)}`}
             </p>
           )}
           <div className="flex items-center gap-2 mt-2">
@@ -131,6 +135,7 @@ export function SolverList() {
     const query = searchQuery.toLowerCase();
     return solvers.filter((s) =>
       s.address.toLowerCase().includes(query) ||
+      s.operatorWallet?.toLowerCase().includes(query) ||
       s.name?.toLowerCase().includes(query)
     );
   }, [solvers, searchQuery]);
@@ -142,7 +147,7 @@ export function SolverList() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search by solver name or address"
+            placeholder="Search by name, operator address, or solver address"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
