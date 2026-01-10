@@ -25,11 +25,17 @@ function getGasClient(): GasStationClient | null {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Log whether key is configured (without exposing the actual key)
+    const keyExists = !!process.env.SHINAMI_KEY;
+    const keyLength = process.env.SHINAMI_KEY?.length || 0;
+    console.log('[Sponsor API] SHINAMI_KEY exists:', keyExists, 'length:', keyLength);
+
     const client = getGasClient();
 
     if (!client) {
+      console.error('[Sponsor API] GasStationClient is null - SHINAMI_KEY not configured');
       return NextResponse.json(
-        { success: false, error: 'Shinami not configured' },
+        { success: false, error: 'Shinami not configured - check SHINAMI_KEY env var' },
         { status: 503 }
       );
     }
@@ -73,8 +79,22 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[Sponsor API] Error:', error);
+    // Log full error details for debugging
+    if (error instanceof Error) {
+      console.error('[Sponsor API] Error name:', error.name);
+      console.error('[Sponsor API] Error message:', error.message);
+      console.error('[Sponsor API] Error stack:', error.stack);
+    }
+    // Check if it's a Shinami API error with more details
+    const errorDetails = error && typeof error === 'object' ? JSON.stringify(error, null, 2) : String(error);
+    console.error('[Sponsor API] Full error object:', errorDetails);
+
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        debug: process.env.NODE_ENV === 'development' ? errorDetails : undefined
+      },
       { status: 500 }
     );
   }
