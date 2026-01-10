@@ -80,7 +80,9 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
     });
 
     // get_solver_stats returns: (successful_fills, failed_fills, reputation, total_volume)
-    const [successfulFills, failedFills, reputationScore, totalVolume] = statsResult;
+    // aptos.view() wraps tuple results in an array, so we need to access statsResult[0]
+    const stats = statsResult[0] as [string, string, string, string];
+    const [successfulFills, failedFills, reputationScore, totalVolume] = stats;
 
     // Fetch metadata from localStorage
     let metadata = getSolverMetadata(address);
