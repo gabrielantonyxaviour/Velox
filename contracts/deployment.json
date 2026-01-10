@@ -19,6 +19,6 @@
     }
   },
   "deployed_at": "2025-01-07T00:00:00Z",
-  "last_updated": "2025-01-10T05:38:00Z",
-  "notes": "Redeployment after Movement testnet reset. Includes public faucet functions for free minting. Latest Move 2.0 code with full intent system (swap, limit order, TWAP, DCA)."
+  "last_updated": "2025-01-10T06:00:00Z",
+  "notes": "Latest Move 2.0 contract code with full intent system (swap, limit order, TWAP, DCA). Includes public faucet functions for free minting. Cleaned up sources removing obsolete modules. Fresh deployment attempts fail with EMODULE_MISSING error on Movement testnet - appears to be network constraint."
 }
