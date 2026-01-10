@@ -30,7 +30,8 @@ export function useSolverStats() {
     setIsLoading(true);
     setError(null);
     try {
-      const [totalResult, activeResult] = await Promise.all([
+      // Get total solvers and total staked
+      const [totalResult, totalStakedResult, allSolversResult] = await Promise.all([
         aptos.view({
           payload: {
             function: `${VELOX_ADDRESS}::solver_registry::get_total_solvers`,
@@ -40,17 +41,43 @@ export function useSolverStats() {
         }),
         aptos.view({
           payload: {
-            function: `${VELOX_ADDRESS}::solver_registry::get_active_solver_count`,
+            function: `${VELOX_ADDRESS}::solver_registry::get_total_staked`,
+            typeArguments: [],
+            functionArguments: [VELOX_ADDRESS],
+          },
+        }),
+        aptos.view({
+          payload: {
+            function: `${VELOX_ADDRESS}::solver_registry::get_all_solvers`,
             typeArguments: [],
             functionArguments: [VELOX_ADDRESS],
           },
         }),
       ]);
 
+      // Count active solvers by checking each one
+      const solverAddresses = allSolversResult[0] as string[];
+      let activeCount = 0;
+
+      if (solverAddresses.length > 0) {
+        const activeChecks = await Promise.all(
+          solverAddresses.map((addr) =>
+            aptos.view({
+              payload: {
+                function: `${VELOX_ADDRESS}::solver_registry::is_active`,
+                typeArguments: [],
+                functionArguments: [VELOX_ADDRESS, addr],
+              },
+            })
+          )
+        );
+        activeCount = activeChecks.filter((result) => result[0] === true).length;
+      }
+
       setStats({
         totalSolvers: Number(totalResult[0]),
-        activeSolvers: Number(activeResult[0]),
-        totalStaked: BigInt(0), // Would need a view function for this
+        activeSolvers: activeCount,
+        totalStaked: BigInt(totalStakedResult[0] as string),
       });
     } catch (err) {
       console.error('Error fetching solver stats:', err);
@@ -95,29 +122,45 @@ export function useSolverInfo(solverAddress: string | null) {
         return;
       }
 
-      // Get solver stats
-      const result = await aptos.view({
-        payload: {
-          function: `${VELOX_ADDRESS}::solver_registry::get_solver_stats`,
-          typeArguments: [],
-          functionArguments: [VELOX_ADDRESS, solverAddress],
-        },
-      });
+      // Get solver stats and additional info
+      const [statsResult, stakeResult, isActiveResult] = await Promise.all([
+        aptos.view({
+          payload: {
+            function: `${VELOX_ADDRESS}::solver_registry::get_solver_stats`,
+            typeArguments: [],
+            functionArguments: [VELOX_ADDRESS, solverAddress],
+          },
+        }),
+        aptos.view({
+          payload: {
+            function: `${VELOX_ADDRESS}::solver_registry::get_stake`,
+            typeArguments: [],
+            functionArguments: [VELOX_ADDRESS, solverAddress],
+          },
+        }),
+        aptos.view({
+          payload: {
+            function: `${VELOX_ADDRESS}::solver_registry::is_active`,
+            typeArguments: [],
+            functionArguments: [VELOX_ADDRESS, solverAddress],
+          },
+        }),
+      ]);
 
-      // Result: (stake, total_volume, reputation_score, successful_fills, failed_fills, average_slippage, is_active)
-      const [stake, totalVolume, reputationScore, successfulFills, failedFills, avgSlippage, isActive] = result;
+      // get_solver_stats returns: (successful_fills, failed_fills, reputation, total_volume)
+      const [successfulFills, failedFills, reputationScore, totalVolume] = statsResult;
 
       setSolver({
         address: solverAddress,
-        stake: BigInt(stake as string),
-        isActive: Boolean(isActive),
+        stake: BigInt(stakeResult[0] as string),
+        isActive: Boolean(isActiveResult[0]),
         registeredAt: 0,
         reputationScore: Number(reputationScore),
         totalIntentsSolved: Number(successfulFills) + Number(failedFills),
         successfulFills: Number(successfulFills),
         failedFills: Number(failedFills),
         totalVolume: BigInt(totalVolume as string),
-        averageSlippage: Number(avgSlippage),
+        averageSlippage: 0, // Not available in contract
         lastActive: 0,
       });
     } catch (err) {
