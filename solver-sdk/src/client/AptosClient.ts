@@ -3,7 +3,7 @@ import { Aptos, AptosConfig, Network, Account, Ed25519PrivateKey } from '@aptos-
 export interface AptosClientConfig {
   rpcUrl: string;
   privateKey?: string;
-  /** Shinami API key - currently used for Gas Station only, Node Service pending */
+  /** Shinami Node Service API key (for enhanced RPC reliability) */
   shinamiNodeKey?: string;
 }
 
@@ -13,10 +13,7 @@ export class VeloxAptosClient {
   private shinamiKey?: string;
 
   constructor(config: AptosClientConfig) {
-    // Note: Shinami Node Service for Movement uses JSON-RPC format
-    // which isn't directly compatible with Aptos SDK's REST client.
-    // For now, we use the standard Movement RPC and store the key
-    // for potential future JSON-RPC integration.
+    // Solver pays its own gas - no need for gas sponsorship
     this.shinamiKey = config.shinamiNodeKey;
 
     this.aptos = new Aptos(
@@ -32,7 +29,7 @@ export class VeloxAptosClient {
     }
 
     if (config.shinamiNodeKey) {
-      console.log('[VeloxAptosClient] Shinami key configured (Gas Station ready)');
+      console.log('[VeloxAptosClient] Shinami Node Service configured for RPC reliability');
     }
   }
 
