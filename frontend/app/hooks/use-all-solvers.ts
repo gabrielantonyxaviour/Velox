@@ -54,7 +54,7 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
 
     if (!isRegistered[0]) return null;
 
-    const result = await aptos.view({
+    const statsResult = await aptos.view({
       payload: {
         function: `${VELOX_ADDRESS}::solver_registry::get_solver_stats`,
         typeArguments: [],
@@ -62,21 +62,38 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
       },
     });
 
-    const [stake, totalVolume, reputationScore, successfulFills, failedFills, avgSlippage, isActive] = result;
+    const stakeResult = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::solver_registry::get_stake`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, address],
+      },
+    });
+
+    const isActiveResult = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::solver_registry::is_active`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, address],
+      },
+    });
+
+    // get_solver_stats returns: (successful_fills, failed_fills, reputation, total_volume)
+    const [successfulFills, failedFills, reputationScore, totalVolume] = statsResult;
 
     // Fetch metadata from localStorage
     const metadata = getSolverMetadata(address);
 
     return {
       address,
-      stake: BigInt(stake as string),
-      isActive: Boolean(isActive),
+      stake: BigInt(stakeResult[0] as string),
+      isActive: Boolean(isActiveResult[0]),
       reputationScore: Number(reputationScore),
       totalIntentsSolved: Number(successfulFills) + Number(failedFills),
       successfulFills: Number(successfulFills),
       failedFills: Number(failedFills),
       totalVolume: BigInt(totalVolume as string),
-      averageSlippage: Number(avgSlippage),
+      averageSlippage: 0,
       registeredAt: 0,
       name: metadata?.name,
       imageUrl: metadata?.imageUrl,
