@@ -16,6 +16,7 @@ import {
   storeSolverMetadata,
   type SolverMetadata,
 } from '@/app/lib/solver-metadata';
+import { decodeVeloxError } from '@/app/lib/velox/error-decoder';
 import {
   Loader2,
   UserPlus,
@@ -55,7 +56,7 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
     website: 'https://velox.dev',
     twitter: '@velox_solver',
     discord: 'discord.gg/velox',
-    stake: '0.1',
+    stake: '1',
   });
 
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -114,7 +115,7 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
       formData.name.trim().length >= 2 &&
       formData.description.trim().length >= 10 &&
       isValidAddress(formData.operatorWallet) &&
-      parseFloat(formData.stake) >= 0.01 &&
+      parseFloat(formData.stake) >= 1 &&
       imageFile !== null
     );
   };
@@ -203,8 +204,11 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
       setConfirmOpen(false);
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to register');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to register';
+      const decodedError = decodeVeloxError(errorMsg);
+      setError(decodedError);
       setStep('form');
+      console.error('[RegisterSolver] Error:', errorMsg, 'Decoded:', decodedError);
     } finally {
       setIsLoading(false);
       setUploadingImage(false);
@@ -359,12 +363,15 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
           <Input
             id="stake"
             type="number"
-            min="0.01"
-            step="0.01"
+            min="1"
+            step="1"
             value={formData.stake}
             onChange={(e) => updateField('stake', e.target.value)}
             disabled={isLoading}
           />
+          <p className="text-xs text-muted-foreground">
+            Minimum stake: 1 MOVE (100,000,000 units)
+          </p>
         </div>
 
         {/* Requirements Info */}
@@ -374,7 +381,7 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
             <div className="text-sm">
               <p className="font-medium text-primary">Requirements</p>
               <ul className="text-muted-foreground list-disc list-inside mt-1">
-                <li>Minimum stake: 0.01 MOVE</li>
+                <li>Minimum stake: 1 MOVE</li>
                 <li>Initial reputation: 50%</li>
                 <li>7-day unstaking cooldown</li>
               </ul>
