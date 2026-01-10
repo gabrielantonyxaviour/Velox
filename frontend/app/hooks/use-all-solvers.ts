@@ -83,6 +83,11 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
 
     // Fetch metadata from localStorage
     const metadata = getSolverMetadata(address);
+    if (metadata) {
+      console.log(`[Solvers] Found metadata for ${address}:`, metadata.name);
+    } else {
+      console.log(`[Solvers] No metadata found for ${address}`);
+    }
 
     return {
       address,
@@ -116,6 +121,7 @@ export function useAllSolvers() {
 
     try {
       const addresses = await fetchSolverAddresses();
+      console.log('[Solvers] Fetched addresses from contract:', addresses);
 
       if (addresses.length === 0) {
         setSolvers([]);
@@ -126,6 +132,7 @@ export function useAllSolvers() {
       const results = await Promise.all(solverPromises);
 
       const validSolvers = results.filter((s): s is SolverListItem => s !== null);
+      console.log('[Solvers] Valid solvers with metadata:', validSolvers);
 
       // Sort by reputation score descending
       validSolvers.sort((a, b) => b.reputationScore - a.reputationScore);
