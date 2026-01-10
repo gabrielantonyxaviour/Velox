@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VeloxGraphQLClient = void 0;
 const graphql_request_1 = require("graphql-request");
+const intent_1 = require("../types/intent");
 class VeloxGraphQLClient {
     client;
     constructor(config) {
@@ -10,34 +11,28 @@ class VeloxGraphQLClient {
     async getPendingIntents() {
         const query = (0, graphql_request_1.gql) `
       query GetPendingIntents {
-        intents(where: { status: "PENDING" }, orderBy: "createdAt", orderDirection: "desc") {
+        intents(where: { status: "ACTIVE" }, orderBy: "createdAt", orderDirection: "desc") {
           id
           type
           user
-          inputToken {
-            address
-            symbol
-            decimals
-          }
-          outputToken {
-            address
-            symbol
-            decimals
-          }
-          inputAmount
-          minOutputAmount
+          inputToken
+          outputToken
+          amountIn
+          minAmountOut
           deadline
-          status
-          createdAt
           limitPrice
-          partialFillAllowed
           numChunks
-          interval
+          intervalSeconds
+          amountPerPeriod
+          totalPeriods
+          totalAmount
+          maxSlippageBps
+          startTime
         }
       }
     `;
         const result = await this.client.request(query);
-        return result.intents.map(this.parseIntent);
+        return result.intents.map((raw) => this.parseIntent(raw));
     }
     async getIntentById(id) {
         const query = (0, graphql_request_1.gql) `
@@ -46,25 +41,19 @@ class VeloxGraphQLClient {
           id
           type
           user
-          inputToken {
-            address
-            symbol
-            decimals
-          }
-          outputToken {
-            address
-            symbol
-            decimals
-          }
-          inputAmount
-          minOutputAmount
+          inputToken
+          outputToken
+          amountIn
+          minAmountOut
           deadline
-          status
-          createdAt
           limitPrice
-          partialFillAllowed
           numChunks
-          interval
+          intervalSeconds
+          amountPerPeriod
+          totalPeriods
+          totalAmount
+          maxSlippageBps
+          startTime
         }
       }
     `;
@@ -78,44 +67,69 @@ class VeloxGraphQLClient {
           id
           type
           user
-          inputToken {
-            address
-            symbol
-            decimals
-          }
-          outputToken {
-            address
-            symbol
-            decimals
-          }
-          inputAmount
-          minOutputAmount
+          inputToken
+          outputToken
+          amountIn
+          minAmountOut
           deadline
-          status
-          createdAt
+          limitPrice
+          numChunks
+          intervalSeconds
+          amountPerPeriod
+          totalPeriods
+          totalAmount
+          maxSlippageBps
+          startTime
         }
       }
     `;
         const result = await this.client.request(query, { user });
-        return result.intents.map(this.parseIntent);
+        return result.intents.map((raw) => this.parseIntent(raw));
     }
     parseIntent(raw) {
-        return {
-            id: raw.id,
-            type: raw.type,
-            user: raw.user,
-            inputToken: { address: raw.input_coin, symbol: '', decimals: 8 },
-            outputToken: { address: raw.output_coin, symbol: '', decimals: 8 },
-            inputAmount: BigInt(raw.amount_in),
-            minOutputAmount: raw.min_amount_out ? BigInt(raw.min_amount_out) : undefined,
-            deadline: new Date(parseInt(raw.deadline) * 1000),
-            status: raw.status,
-            createdAt: new Date(parseInt(raw.created_at) * 1000),
-            limitPrice: raw.limit_price ? BigInt(raw.limit_price) : undefined,
-            partialFillAllowed: raw.partial_fill,
-            numChunks: raw.num_chunks ? parseInt(raw.num_chunks) : undefined,
-            interval: raw.interval ? parseInt(raw.interval) : undefined,
+        const intent = {
+            type: this.parseIntentType(raw.type),
+            inputToken: raw.inputToken,
+            outputToken: raw.outputToken,
         };
+        // Swap fields
+        if (raw.amountIn)
+            intent.amountIn = BigInt(raw.amountIn);
+        if (raw.minAmountOut)
+            intent.minAmountOut = BigInt(raw.minAmountOut);
+        if (raw.deadline)
+            intent.deadline = parseInt(raw.deadline);
+        // LimitOrder fields
+        if (raw.limitPrice)
+            intent.limitPrice = BigInt(raw.limitPrice);
+        // TWAP fields
+        if (raw.totalAmount)
+            intent.totalAmount = BigInt(raw.totalAmount);
+        if (raw.numChunks)
+            intent.numChunks = parseInt(raw.numChunks);
+        if (raw.intervalSeconds)
+            intent.intervalSeconds = parseInt(raw.intervalSeconds);
+        if (raw.maxSlippageBps)
+            intent.maxSlippageBps = parseInt(raw.maxSlippageBps);
+        if (raw.startTime)
+            intent.startTime = parseInt(raw.startTime);
+        // DCA fields
+        if (raw.amountPerPeriod)
+            intent.amountPerPeriod = BigInt(raw.amountPerPeriod);
+        if (raw.totalPeriods)
+            intent.totalPeriods = parseInt(raw.totalPeriods);
+        return intent;
+    }
+    parseIntentType(type) {
+        if (type.includes('Swap'))
+            return intent_1.IntentType.SWAP;
+        if (type.includes('LimitOrder'))
+            return intent_1.IntentType.LIMIT_ORDER;
+        if (type.includes('TWAP'))
+            return intent_1.IntentType.TWAP;
+        if (type.includes('DCA'))
+            return intent_1.IntentType.DCA;
+        return intent_1.IntentType.SWAP;
     }
 }
 exports.VeloxGraphQLClient = VeloxGraphQLClient;

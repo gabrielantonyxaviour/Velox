@@ -5,12 +5,12 @@ const events_1 = require("events");
 const AptosClient_1 = require("./client/AptosClient");
 const GraphQLClient_1 = require("./client/GraphQLClient");
 const intent_1 = require("./types/intent");
-const pricing_1 = require("./utils/pricing");
 const coingecko_1 = require("./utils/coingecko");
 class VeloxSolver extends events_1.EventEmitter {
     client;
     graphql;
     veloxAddress;
+    feeConfigAddr;
     isRunning = false;
     pollingInterval;
     skipExistingOnStartup;
@@ -22,6 +22,7 @@ class VeloxSolver extends events_1.EventEmitter {
             shinamiNodeKey: config.shinamiNodeKey,
         });
         this.veloxAddress = config.veloxAddress;
+        this.feeConfigAddr = config.feeConfigAddr || config.veloxAddress;
         this.pollingInterval = config.pollingInterval || 1000;
         this.skipExistingOnStartup = config.skipExistingOnStartup ?? false;
         if (config.graphqlUrl) {
@@ -32,10 +33,7 @@ class VeloxSolver extends events_1.EventEmitter {
         }
     }
     // ============ Intent Discovery ============
-    async getPendingIntents() {
-        if (this.graphql) {
-            return this.graphql.getPendingIntents();
-        }
+    async getActiveIntents() {
         // Get total intents count
         const totalResult = await this.client.view({
             function: `${this.veloxAddress}::submission::get_total_intents`,
@@ -43,8 +41,8 @@ class VeloxSolver extends events_1.EventEmitter {
             functionArguments: [this.veloxAddress],
         });
         const totalIntents = parseInt(totalResult[0] || '0');
-        const pendingIntents = [];
-        // Iterate through all intents and filter pending ones
+        const activeIntents = [];
+        // Iterate through all intents and filter active ones
         for (let i = 0; i < totalIntents; i++) {
             try {
                 const intentResult = await this.client.view({
@@ -53,31 +51,26 @@ class VeloxSolver extends events_1.EventEmitter {
                     functionArguments: [this.veloxAddress, i],
                 });
                 if (intentResult[0]) {
-                    const intent = this.parseIntent(intentResult[0]);
-                    // Only include pending intents (status 0)
-                    if (intent.status === intent_1.IntentStatus.PENDING) {
-                        pendingIntents.push(intent);
+                    const record = this.parseIntentRecord(intentResult[0]);
+                    if (record.status === intent_1.IntentStatus.ACTIVE) {
+                        activeIntents.push(record);
                     }
                 }
             }
             catch (error) {
-                // Intent might not exist or be in unexpected format, skip it
                 console.log(`Skipping intent ${i}:`, error.message);
             }
         }
-        return pendingIntents;
+        return activeIntents;
     }
     async getIntent(intentId) {
-        if (this.graphql) {
-            return this.graphql.getIntentById(intentId);
-        }
         try {
             const result = await this.client.view({
                 function: `${this.veloxAddress}::submission::get_intent`,
                 typeArguments: [],
                 functionArguments: [this.veloxAddress, intentId],
             });
-            return result[0] ? this.parseIntent(result[0]) : null;
+            return result[0] ? this.parseIntentRecord(result[0]) : null;
         }
         catch {
             return null;
@@ -90,285 +83,317 @@ class VeloxSolver extends events_1.EventEmitter {
     stopIntentStream() {
         this.isRunning = false;
     }
-    // ============ Solution Submission ============
-    async submitSolution(solution) {
-        if (!this.client.hasAccount()) {
-            throw new Error('Solver account not configured');
-        }
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::submit_solution`,
-                typeArguments: [],
-                functionArguments: [
-                    solution.intentId,
-                    solution.outputAmount.toString(),
-                    solution.executionPrice.toString(),
-                ],
-            });
-            return { success: true, txHash };
-        }
-        catch (error) {
-            return { success: false, error: error.message };
-        }
-    }
-    async executeSettlement(intentId) {
-        if (!this.client.hasAccount()) {
-            throw new Error('Solver account not configured');
-        }
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::execute_settlement`,
-                typeArguments: [],
-                functionArguments: [intentId],
-            });
-            return { success: true, txHash };
-        }
-        catch (error) {
-            return { success: false, error: error.message };
-        }
-    }
+    // ============ Fill Functions (NEW) ============
     /**
-     * Solve a swap intent by directly providing output tokens
-     * Calls settlement::solve_swap which transfers:
-     * - Output tokens from solver to user
-     * - Input tokens from escrow to solver
+     * Fill a swap intent (partial or full)
+     * Uses settlement::fill_swap
      */
-    async solveSwap(intentId, outputAmount) {
+    async fillSwap(params) {
         if (!this.client.hasAccount()) {
             throw new Error('Solver account not configured');
         }
-        console.log(`Calling solve_swap:`);
+        console.log(`Calling fill_swap:`);
         console.log(`  Registry: ${this.veloxAddress}`);
-        console.log(`  Intent ID: ${intentId}`);
-        console.log(`  Output Amount: ${outputAmount}`);
+        console.log(`  Fee Config: ${this.feeConfigAddr}`);
+        console.log(`  Intent ID: ${params.intentId}`);
+        console.log(`  Fill Input: ${params.fillInput}`);
+        console.log(`  Output Amount: ${params.outputAmount}`);
         try {
             const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::solve_swap`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, intentId, outputAmount.toString()],
-            });
-            console.log(`solve_swap transaction successful: ${txHash}`);
-            return { success: true, txHash };
-        }
-        catch (error) {
-            console.error(`solve_swap failed:`, error);
-            return { success: false, error: error.message };
-        }
-    }
-    /**
-     * Solve a limit order intent (supports partial fills)
-     * Calls settlement::solve_limit_order which:
-     * - Validates price meets limit_price constraint
-     * - Transfers output tokens from solver to user
-     * - Transfers fill_amount of input tokens from escrow to solver
-     */
-    async solveLimitOrder(intentId, fillAmount, outputAmount) {
-        if (!this.client.hasAccount()) {
-            throw new Error('Solver account not configured');
-        }
-        console.log(`Calling solve_limit_order:`);
-        console.log(`  Registry: ${this.veloxAddress}`);
-        console.log(`  Intent ID: ${intentId}`);
-        console.log(`  Fill Amount: ${fillAmount}`);
-        console.log(`  Output Amount: ${outputAmount}`);
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::solve_limit_order`,
+                function: `${this.veloxAddress}::settlement::fill_swap`,
                 typeArguments: [],
                 functionArguments: [
                     this.veloxAddress,
-                    intentId,
-                    fillAmount.toString(),
-                    outputAmount.toString(),
+                    this.feeConfigAddr,
+                    params.intentId.toString(),
+                    params.fillInput.toString(),
+                    params.outputAmount.toString(),
                 ],
             });
-            console.log(`solve_limit_order transaction successful: ${txHash}`);
-            return { success: true, txHash };
+            console.log(`fill_swap transaction successful: ${txHash}`);
+            return {
+                success: true,
+                txHash,
+                fillInput: params.fillInput,
+                outputAmount: params.outputAmount,
+            };
         }
         catch (error) {
-            console.error(`solve_limit_order failed:`, error);
+            console.error(`fill_swap failed:`, error);
             return { success: false, error: error.message };
         }
     }
     /**
-     * Solve a DCA period by directly providing output tokens
-     * Calls settlement::solve_dca_period which transfers:
-     * - Output tokens from solver to user
-     * - Period's input tokens from escrow to solver
+     * Fill a limit order (partial or full)
+     * Uses settlement::fill_limit_order
      */
-    async solveDCAPeriod(intentId, outputAmount, scheduledRegistryAddr) {
+    async fillLimitOrder(params) {
         if (!this.client.hasAccount()) {
             throw new Error('Solver account not configured');
         }
-        const registryAddr = scheduledRegistryAddr || this.veloxAddress;
-        console.log(`Calling solve_dca_period:`);
+        console.log(`Calling fill_limit_order:`);
         console.log(`  Registry: ${this.veloxAddress}`);
-        console.log(`  Scheduled Registry: ${registryAddr}`);
-        console.log(`  Intent ID: ${intentId}`);
-        console.log(`  Output Amount: ${outputAmount}`);
+        console.log(`  Fee Config: ${this.feeConfigAddr}`);
+        console.log(`  Intent ID: ${params.intentId}`);
+        console.log(`  Fill Input: ${params.fillInput}`);
+        console.log(`  Output Amount: ${params.outputAmount}`);
         try {
             const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::solve_dca_period`,
+                function: `${this.veloxAddress}::settlement::fill_limit_order`,
                 typeArguments: [],
                 functionArguments: [
                     this.veloxAddress,
-                    registryAddr,
-                    intentId,
-                    outputAmount.toString(),
+                    this.feeConfigAddr,
+                    params.intentId.toString(),
+                    params.fillInput.toString(),
+                    params.outputAmount.toString(),
                 ],
             });
-            console.log(`solve_dca_period transaction successful: ${txHash}`);
-            return { success: true, txHash };
+            console.log(`fill_limit_order transaction successful: ${txHash}`);
+            return {
+                success: true,
+                txHash,
+                fillInput: params.fillInput,
+                outputAmount: params.outputAmount,
+            };
         }
         catch (error) {
-            console.error(`solve_dca_period failed:`, error);
+            console.error(`fill_limit_order failed:`, error);
             return { success: false, error: error.message };
         }
     }
     /**
-     * Solve a TWAP chunk by directly providing output tokens
-     * Calls settlement::solve_twap_chunk which transfers:
-     * - Output tokens from solver to user
-     * - Chunk's input tokens from escrow to solver
+     * Fill a TWAP chunk
+     * Uses settlement::fill_twap_chunk
      */
-    async solveTWAPChunk(intentId, outputAmount, scheduledRegistryAddr) {
+    async fillTwapChunk(params) {
         if (!this.client.hasAccount()) {
             throw new Error('Solver account not configured');
         }
-        const registryAddr = scheduledRegistryAddr || this.veloxAddress;
-        console.log(`Calling solve_twap_chunk:`);
+        console.log(`Calling fill_twap_chunk:`);
         console.log(`  Registry: ${this.veloxAddress}`);
-        console.log(`  Scheduled Registry: ${registryAddr}`);
-        console.log(`  Intent ID: ${intentId}`);
-        console.log(`  Output Amount: ${outputAmount}`);
+        console.log(`  Fee Config: ${this.feeConfigAddr}`);
+        console.log(`  Intent ID: ${params.intentId}`);
+        console.log(`  Output Amount: ${params.outputAmount}`);
         try {
             const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::solve_twap_chunk`,
+                function: `${this.veloxAddress}::settlement::fill_twap_chunk`,
                 typeArguments: [],
                 functionArguments: [
                     this.veloxAddress,
-                    registryAddr,
-                    intentId,
-                    outputAmount.toString(),
+                    this.feeConfigAddr,
+                    params.intentId.toString(),
+                    params.outputAmount.toString(),
                 ],
             });
-            console.log(`solve_twap_chunk transaction successful: ${txHash}`);
-            return { success: true, txHash };
+            console.log(`fill_twap_chunk transaction successful: ${txHash}`);
+            return { success: true, txHash, outputAmount: params.outputAmount };
         }
         catch (error) {
-            console.error(`solve_twap_chunk failed:`, error);
+            console.error(`fill_twap_chunk failed:`, error);
             return { success: false, error: error.message };
         }
     }
     /**
-     * Check if a TWAP chunk is ready for execution
+     * Fill a DCA period
+     * Uses settlement::fill_dca_period
      */
-    async isTWAPChunkReady(intentId, scheduledRegistryAddr) {
-        const registryAddr = scheduledRegistryAddr || this.veloxAddress;
+    async fillDcaPeriod(params) {
+        if (!this.client.hasAccount()) {
+            throw new Error('Solver account not configured');
+        }
+        console.log(`Calling fill_dca_period:`);
+        console.log(`  Registry: ${this.veloxAddress}`);
+        console.log(`  Fee Config: ${this.feeConfigAddr}`);
+        console.log(`  Intent ID: ${params.intentId}`);
+        console.log(`  Output Amount: ${params.outputAmount}`);
         try {
+            const txHash = await this.client.submitTransaction({
+                function: `${this.veloxAddress}::settlement::fill_dca_period`,
+                typeArguments: [],
+                functionArguments: [
+                    this.veloxAddress,
+                    this.feeConfigAddr,
+                    params.intentId.toString(),
+                    params.outputAmount.toString(),
+                ],
+            });
+            console.log(`fill_dca_period transaction successful: ${txHash}`);
+            return { success: true, txHash, outputAmount: params.outputAmount };
+        }
+        catch (error) {
+            console.error(`fill_dca_period failed:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+    // ============ View Functions ============
+    /**
+     * Check if solver can fill an intent
+     */
+    async canFill(intentId) {
+        try {
+            const solverAddr = this.client.getAccountAddress();
+            if (!solverAddr)
+                return false;
             const result = await this.client.view({
-                function: `${this.veloxAddress}::scheduled::is_ready_for_execution`,
+                function: `${this.veloxAddress}::settlement::can_fill`,
                 typeArguments: [],
-                functionArguments: [registryAddr, intentId],
+                functionArguments: [this.veloxAddress, intentId.toString(), solverAddr],
             });
             return result[0] ?? false;
         }
         catch (error) {
-            console.error(`Error checking TWAP chunk readiness:`, error);
+            console.error(`Error checking can_fill:`, error);
             return false;
         }
     }
     /**
-     * Check if a DCA period is ready for execution
+     * Calculate minimum output for a partial fill
      */
-    async isDCAPeriodReady(intentId, scheduledRegistryAddr) {
-        const registryAddr = scheduledRegistryAddr || this.veloxAddress;
+    async calculateMinOutput(intentId, fillInput) {
         try {
             const result = await this.client.view({
-                function: `${this.veloxAddress}::scheduled::is_ready_for_execution`,
+                function: `${this.veloxAddress}::settlement::calculate_min_output_for_fill`,
                 typeArguments: [],
-                functionArguments: [registryAddr, intentId],
+                functionArguments: [this.veloxAddress, intentId.toString(), fillInput.toString()],
             });
-            return result[0] ?? false;
+            return BigInt(result[0] || '0');
         }
         catch (error) {
-            console.error(`Error checking DCA period readiness:`, error);
-            return false;
+            console.error(`Error calculating min output:`, error);
+            return 0n;
         }
     }
     /**
-     * Check if a DCA/TWAP is completed
+     * Get current Dutch auction price
      */
-    async isScheduledCompleted(intentId, scheduledRegistryAddr) {
-        const registryAddr = scheduledRegistryAddr || this.veloxAddress;
+    async getDutchPrice(intentId) {
         try {
             const result = await this.client.view({
-                function: `${this.veloxAddress}::scheduled::is_completed`,
+                function: `${this.veloxAddress}::auction::get_current_dutch_price`,
                 typeArguments: [],
-                functionArguments: [registryAddr, intentId],
+                functionArguments: [this.veloxAddress, intentId.toString()],
             });
-            return result[0] ?? false;
+            return BigInt(result[0] || '0');
         }
         catch (error) {
-            console.error(`Error checking completion status:`, error);
-            return false;
+            console.error(`Error getting Dutch price:`, error);
+            return 0n;
         }
     }
     /**
-     * Get the number of periods/chunks executed for a scheduled intent
+     * Get auction winner
      */
-    async getExecutedPeriods(intentId, scheduledRegistryAddr) {
-        const registryAddr = scheduledRegistryAddr || this.veloxAddress;
+    async getAuctionWinner(intentId) {
         try {
             const result = await this.client.view({
-                function: `${this.veloxAddress}::scheduled::get_chunks_executed`,
+                function: `${this.veloxAddress}::auction::get_winner`,
                 typeArguments: [],
-                functionArguments: [registryAddr, intentId],
+                functionArguments: [this.veloxAddress, intentId.toString()],
             });
-            return parseInt(result[0] || '0');
+            return { hasWinner: result[0] ?? false, winner: result[1] ?? '' };
         }
         catch (error) {
-            console.error(`Error getting executed periods:`, error);
-            return 0;
+            console.error(`Error getting auction winner:`, error);
+            return { hasWinner: false, winner: '' };
         }
     }
     /**
-     * Check if a limit order can be filled at current market price
-     * Returns the execution price if fillable, null otherwise
+     * Get fee basis points
      */
-    async canFillLimitOrder(intent) {
-        if (!intent.limitPrice) {
-            return { canFill: false, executionPrice: BigInt(0), outputAmount: BigInt(0) };
+    async getFeeBps() {
+        try {
+            const result = await this.client.view({
+                function: `${this.veloxAddress}::settlement::get_fee_bps`,
+                typeArguments: [],
+                functionArguments: [this.feeConfigAddr],
+            });
+            return Number(result[0] || '30');
         }
-        // Get market price and calculate output
-        const route = await this.findBestRoute(intent.inputToken.address, intent.outputToken.address, intent.inputAmount);
-        const outputAmount = route.expectedOutput;
-        // execution_price = (output_amount * 10000) / input_amount
-        const executionPrice = (outputAmount * BigInt(10000)) / intent.inputAmount;
-        // Order fills only if execution_price >= limit_price
-        const canFill = executionPrice >= intent.limitPrice;
-        console.log(`Limit order check:`);
-        console.log(`  Limit price: ${intent.limitPrice}`);
-        console.log(`  Execution price: ${executionPrice}`);
-        console.log(`  Can fill: ${canFill}`);
-        return { canFill, executionPrice, outputAmount };
+        catch (error) {
+            console.error(`Error getting fee bps:`, error);
+            return 30; // Default 0.3%
+        }
+    }
+    // ============ Auction Functions ============
+    /**
+     * Submit a bid to a sealed-bid auction
+     */
+    async submitBid(intentId, outputAmount) {
+        if (!this.client.hasAccount()) {
+            throw new Error('Solver account not configured');
+        }
+        console.log(`Calling submit_bid:`);
+        console.log(`  Registry: ${this.veloxAddress}`);
+        console.log(`  Intent ID: ${intentId}`);
+        console.log(`  Output Amount: ${outputAmount}`);
+        try {
+            const txHash = await this.client.submitTransaction({
+                function: `${this.veloxAddress}::auction::submit_bid`,
+                typeArguments: [],
+                functionArguments: [
+                    this.veloxAddress,
+                    intentId.toString(),
+                    outputAmount.toString(),
+                ],
+            });
+            console.log(`submit_bid transaction successful: ${txHash}`);
+            return { success: true, txHash };
+        }
+        catch (error) {
+            console.error(`submit_bid failed:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+    /**
+     * Accept a Dutch auction at current price
+     */
+    async acceptDutchAuction(intentId) {
+        if (!this.client.hasAccount()) {
+            throw new Error('Solver account not configured');
+        }
+        console.log(`Calling accept_dutch:`);
+        console.log(`  Registry: ${this.veloxAddress}`);
+        console.log(`  Intent ID: ${intentId}`);
+        try {
+            const txHash = await this.client.submitTransaction({
+                function: `${this.veloxAddress}::auction::accept_dutch`,
+                typeArguments: [],
+                functionArguments: [this.veloxAddress, intentId.toString()],
+            });
+            console.log(`accept_dutch transaction successful: ${txHash}`);
+            return { success: true, txHash };
+        }
+        catch (error) {
+            console.error(`accept_dutch failed:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+    /**
+     * Complete a sealed-bid auction (after end time)
+     */
+    async completeSealedBid(intentId) {
+        console.log(`Calling complete_sealed_bid:`);
+        console.log(`  Registry: ${this.veloxAddress}`);
+        console.log(`  Intent ID: ${intentId}`);
+        try {
+            const txHash = await this.client.submitTransaction({
+                function: `${this.veloxAddress}::auction::complete_sealed_bid`,
+                typeArguments: [],
+                functionArguments: [this.veloxAddress, intentId.toString()],
+            });
+            console.log(`complete_sealed_bid transaction successful: ${txHash}`);
+            return { success: true, txHash };
+        }
+        catch (error) {
+            console.error(`complete_sealed_bid failed:`, error);
+            return { success: false, error: error.message };
+        }
     }
     // ============ Pricing & Routing ============
-    async calculateOptimalSolution(intent) {
-        const route = await this.findBestRoute(intent.inputToken.address, intent.outputToken.address, intent.inputAmount);
-        const outputAmount = route.expectedOutput;
-        const executionPrice = (0, pricing_1.calculatePrice)(intent.inputAmount, outputAmount, intent.inputToken.decimals, intent.outputToken.decimals);
-        return {
-            intentId: intent.id,
-            outputAmount,
-            executionPrice,
-            route,
-            expiresAt: new Date(Date.now() + 60000),
-        };
-    }
     async findBestRoute(tokenIn, tokenOut, amountIn) {
-        // Use CoinGecko pricing to calculate output (no pools needed)
-        const { outputAmount, exchangeRate } = await (0, coingecko_1.calculateOutputFromPrices)(tokenIn, tokenOut, amountIn, 8, // input decimals
+        // Use CoinGecko pricing to calculate output
+        const { outputAmount } = await (0, coingecko_1.calculateOutputFromPrices)(tokenIn, tokenOut, amountIn, 8, // input decimals
         8 // output decimals
         );
         // Apply a small spread for solver profit (0.1%)
@@ -380,7 +405,7 @@ class VeloxSolver extends events_1.EventEmitter {
             steps: [
                 {
                     dexId: 0,
-                    poolAddress: 'direct', // Direct solver fill, no pool
+                    poolAddress: 'direct',
                     tokenIn,
                     tokenOut,
                     amountIn,
@@ -391,409 +416,47 @@ class VeloxSolver extends events_1.EventEmitter {
             priceImpact: 0,
         };
     }
-    // ============ Dutch Auction Queries ============
-    async getDutchAuction(intentId) {
-        try {
-            const result = await this.client.view({
-                function: `${this.veloxAddress}::auction::get_dutch_auction`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, intentId],
-            });
-            // View returns a single object with named properties
-            const data = result[0];
-            const winnerVec = data.winner.vec;
-            const winnerAddress = winnerVec.length > 0 && winnerVec[0] ? winnerVec[0] : null;
-            return {
-                intentId: BigInt(data.intent_id),
-                startTime: BigInt(data.start_time),
-                startPrice: BigInt(data.start_price),
-                endPrice: BigInt(data.end_price),
-                duration: BigInt(data.duration),
-                isActive: data.is_active,
-                winner: winnerAddress,
-                acceptedPrice: BigInt(data.accepted_price),
-            };
-        }
-        catch (error) {
-            console.error(`Error getting Dutch auction:`, error);
-            return null;
-        }
-    }
-    async getDutchPrice(intentId) {
-        const result = await this.client.view({
-            function: `${this.veloxAddress}::auction::get_dutch_price`,
-            typeArguments: [],
-            functionArguments: [this.veloxAddress, intentId],
-        });
-        return BigInt(result[0]);
-    }
-    async isDutchActive(intentId) {
-        const result = await this.client.view({
-            function: `${this.veloxAddress}::auction::is_dutch_active`,
-            typeArguments: [],
-            functionArguments: [this.veloxAddress, intentId],
-        });
-        return result[0];
-    }
-    async getActiveDutchCount() {
-        const result = await this.client.view({
-            function: `${this.veloxAddress}::auction::get_active_dutch_count`,
-            typeArguments: [],
-            functionArguments: [this.veloxAddress],
-        });
-        return BigInt(result[0]);
-    }
-    // ============ Dutch Auction Transactions ============
-    async acceptDutchAuction(intentId) {
-        if (!this.client.hasAccount()) {
-            throw new Error('Solver account not configured');
-        }
-        console.log(`Calling accept_dutch_auction:`);
-        console.log(`  Registry: ${this.veloxAddress}`);
-        console.log(`  Intent ID: ${intentId}`);
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::auction::accept_dutch_auction`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, this.veloxAddress, intentId],
-            });
-            console.log(`accept_dutch_auction transaction successful: ${txHash}`);
-            return { success: true, txHash };
-        }
-        catch (error) {
-            console.error(`accept_dutch_auction failed:`, error);
-            return { success: false, error: error.message };
-        }
-    }
-    async settleDutchAuction(intentId) {
-        if (!this.client.hasAccount()) {
-            throw new Error('Solver account not configured');
-        }
-        console.log(`Calling settle_dutch_auction:`);
-        console.log(`  Registry: ${this.veloxAddress}`);
-        console.log(`  Intent ID: ${intentId}`);
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::settle_dutch_auction`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, this.veloxAddress, intentId],
-            });
-            console.log(`settle_dutch_auction transaction successful: ${txHash}`);
-            return { success: true, txHash };
-        }
-        catch (error) {
-            console.error(`settle_dutch_auction failed:`, error);
-            return { success: false, error: error.message };
-        }
-    }
-    // ============ Dutch Auction Utilities ============
-    /**
-     * Calculate time until Dutch price reaches target price
-     */
-    calculateTimeToPrice(dutch, targetPrice) {
-        if (targetPrice >= dutch.startPrice)
-            return 0n;
-        if (targetPrice <= dutch.endPrice)
-            return dutch.duration;
-        const priceRange = dutch.startPrice - dutch.endPrice;
-        const priceDropNeeded = dutch.startPrice - targetPrice;
-        return (priceDropNeeded * dutch.duration) / priceRange;
-    }
-    /**
-     * Monitor Dutch auction and accept when price reaches threshold
-     */
-    async monitorAndAcceptDutch(intentId, maxPrice, pollIntervalMs = 1000) {
-        while (true) {
-            const isActive = await this.isDutchActive(intentId);
-            if (!isActive) {
-                console.log('Dutch auction no longer active');
-                return null;
-            }
-            const currentPrice = await this.getDutchPrice(intentId);
-            console.log(`Current Dutch price: ${currentPrice}`);
-            if (currentPrice <= maxPrice) {
-                console.log(`Price acceptable. Accepting at ${currentPrice}`);
-                try {
-                    const result = await this.acceptDutchAuction(intentId);
-                    if (result.success && result.txHash) {
-                        return { txHash: result.txHash, price: currentPrice };
-                    }
-                    console.error('Failed to accept:', result.error);
-                    return null;
-                }
-                catch (error) {
-                    console.error('Failed to accept (someone else may have won):', error);
-                    return null;
-                }
-            }
-            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-        }
-    }
-    // ============ Sealed Bid Auction Queries ============
-    /**
-     * Check if a sealed bid auction is active for an intent
-     */
-    async isSealedBidAuctionActive(intentId) {
-        try {
-            const result = await this.client.view({
-                function: `${this.veloxAddress}::auction::is_auction_active`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, intentId],
-            });
-            return result[0] ?? false;
-        }
-        catch (error) {
-            // Auction may not exist
-            return false;
-        }
-    }
-    /**
-     * Get sealed bid auction details
-     */
-    async getSealedBidAuction(intentId) {
-        try {
-            const result = await this.client.view({
-                function: `${this.veloxAddress}::auction::get_auction`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, intentId],
-            });
-            const data = result[0];
-            const winnerVec = data.winner.vec;
-            const winnerAddress = winnerVec.length > 0 && winnerVec[0] ? winnerVec[0] : null;
-            // Parse status from __variant__ pattern or string
-            let status = intent_1.AuctionStatus.ACTIVE;
-            if (typeof data.status === 'object' && '__variant__' in data.status) {
-                const variant = data.status.__variant__;
-                if (variant === 'Active')
-                    status = intent_1.AuctionStatus.ACTIVE;
-                else if (variant === 'Selecting')
-                    status = intent_1.AuctionStatus.SELECTING;
-                else if (variant === 'Completed')
-                    status = intent_1.AuctionStatus.COMPLETED;
-                else if (variant === 'Cancelled')
-                    status = intent_1.AuctionStatus.CANCELLED;
-            }
-            return {
-                intentId: BigInt(data.intent_id),
-                startTime: BigInt(data.start_time),
-                endTime: BigInt(data.end_time),
-                solutionCount: Array.isArray(data.solutions) ? data.solutions.length : 0,
-                winner: winnerAddress,
-                status,
-            };
-        }
-        catch (error) {
-            console.error(`Error getting sealed bid auction:`, error);
-            return null;
-        }
-    }
-    /**
-     * Get time remaining for a sealed bid auction
-     */
-    async getAuctionTimeRemaining(intentId) {
-        try {
-            const result = await this.client.view({
-                function: `${this.veloxAddress}::auction::get_time_remaining`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, intentId],
-            });
-            return parseInt(result[0] || '0');
-        }
-        catch (error) {
-            console.error(`Error getting auction time remaining:`, error);
-            return 0;
-        }
-    }
-    /**
-     * Get winner of a sealed bid auction
-     */
-    async getAuctionWinner(intentId) {
-        try {
-            const result = await this.client.view({
-                function: `${this.veloxAddress}::auction::get_winner`,
-                typeArguments: [],
-                functionArguments: [this.veloxAddress, intentId],
-            });
-            const winnerVec = result[0]?.vec;
-            return winnerVec && winnerVec.length > 0 && winnerVec[0] ? winnerVec[0] : null;
-        }
-        catch (error) {
-            console.error(`Error getting auction winner:`, error);
-            return null;
-        }
-    }
-    /**
-     * Check if solver is the winner of a sealed bid auction
-     */
-    async isAuctionWinner(intentId) {
-        const winner = await this.getAuctionWinner(intentId);
-        if (!winner)
-            return false;
-        const solverAddress = this.client.getAccountAddress();
-        return winner.toLowerCase() === solverAddress?.toLowerCase();
-    }
-    // ============ Sealed Bid Auction Transactions ============
-    /**
-     * Submit a bid to a sealed bid auction
-     * Calls auction::submit_solution
-     */
-    async submitBid(intentId, outputAmount, executionPrice) {
-        if (!this.client.hasAccount()) {
-            throw new Error('Solver account not configured');
-        }
-        console.log(`Calling submit_solution (bid):`);
-        console.log(`  Auction State: ${this.veloxAddress}`);
-        console.log(`  Solver Registry: ${this.veloxAddress}`);
-        console.log(`  Intent ID: ${intentId}`);
-        console.log(`  Output Amount: ${outputAmount}`);
-        console.log(`  Execution Price: ${executionPrice}`);
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::auction::submit_solution`,
-                typeArguments: [],
-                functionArguments: [
-                    this.veloxAddress, // auction_state_addr
-                    this.veloxAddress, // solver_registry_addr
-                    intentId,
-                    outputAmount.toString(),
-                    executionPrice.toString(),
-                ],
-            });
-            console.log(`submit_solution (bid) transaction successful: ${txHash}`);
-            return { success: true, txHash };
-        }
-        catch (error) {
-            console.error(`submit_solution (bid) failed:`, error);
-            return { success: false, error: error.message };
-        }
-    }
-    /**
-     * Close a sealed bid auction after duration ends
-     * Calls auction::close_auction
-     */
-    async closeAuction(intentId) {
-        console.log(`Calling close_auction:`);
-        console.log(`  Auction State: ${this.veloxAddress}`);
-        console.log(`  Intent ID: ${intentId}`);
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::auction::close_auction`,
-                typeArguments: [],
-                functionArguments: [
-                    this.veloxAddress, // auction_state_addr
-                    this.veloxAddress, // solver_registry_addr
-                    intentId,
-                ],
-            });
-            console.log(`close_auction transaction successful: ${txHash}`);
-            return { success: true, txHash };
-        }
-        catch (error) {
-            console.error(`close_auction failed:`, error);
-            return { success: false, error: error.message };
-        }
-    }
-    /**
-     * Settle an intent from a completed sealed bid auction
-     * Only the winner can settle
-     * Calls settlement::settle_from_auction
-     */
-    async settleFromAuction(intentId) {
-        if (!this.client.hasAccount()) {
-            throw new Error('Solver account not configured');
-        }
-        console.log(`Calling settle_from_auction:`);
-        console.log(`  Registry: ${this.veloxAddress}`);
-        console.log(`  Auction State: ${this.veloxAddress}`);
-        console.log(`  Intent ID: ${intentId}`);
-        try {
-            const txHash = await this.client.submitTransaction({
-                function: `${this.veloxAddress}::settlement::settle_from_auction`,
-                typeArguments: [],
-                functionArguments: [
-                    this.veloxAddress, // registry_addr
-                    this.veloxAddress, // auction_state_addr
-                    intentId,
-                ],
-            });
-            console.log(`settle_from_auction transaction successful: ${txHash}`);
-            return { success: true, txHash };
-        }
-        catch (error) {
-            console.error(`settle_from_auction failed:`, error);
-            return { success: false, error: error.message };
-        }
-    }
-    /**
-     * Monitor sealed bid auction and settle when won
-     * Returns null if auction not won
-     */
-    async monitorAndSettleAuction(intentId, pollIntervalMs = 2000) {
-        while (true) {
-            const auction = await this.getSealedBidAuction(intentId);
-            if (!auction) {
-                console.log('Auction not found');
-                return null;
-            }
-            console.log(`Auction status: ${auction.status}, solutions: ${auction.solutionCount}`);
-            // Check if auction is completed
-            if (auction.status === intent_1.AuctionStatus.COMPLETED) {
-                // Check if we won
-                const isWinner = await this.isAuctionWinner(intentId);
-                if (isWinner) {
-                    console.log('We won the auction! Settling...');
-                    const result = await this.settleFromAuction(intentId);
-                    if (result.success && result.txHash) {
-                        return { txHash: result.txHash };
-                    }
-                    console.error('Failed to settle:', result.error);
-                    return null;
-                }
-                else {
-                    console.log('Auction completed but we did not win');
-                    return null;
-                }
-            }
-            // Check if auction was cancelled
-            if (auction.status === intent_1.AuctionStatus.CANCELLED) {
-                console.log('Auction was cancelled');
-                return null;
-            }
-            // Check if we should try to close the auction
-            const timeRemaining = await this.getAuctionTimeRemaining(intentId);
-            if (timeRemaining === 0 && (auction.status === intent_1.AuctionStatus.ACTIVE || auction.status === intent_1.AuctionStatus.SELECTING)) {
-                console.log('Auction time expired, attempting to close...');
-                const closeResult = await this.closeAuction(intentId);
-                if (!closeResult.success) {
-                    console.log('Failed to close auction:', closeResult.error);
-                }
-            }
-            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-        }
-    }
     // ============ Solver Stats ============
     async getSolverStats(address) {
         const solverAddress = address || this.client.getAccountAddress();
         if (!solverAddress) {
             throw new Error('No solver address provided');
         }
-        const result = await this.client.view({
-            function: `${this.veloxAddress}::solver_registry::get_solver_info`,
-            typeArguments: [],
-            functionArguments: [solverAddress],
-        });
-        return this.parseSolverStats(result);
+        try {
+            const result = await this.client.view({
+                function: `${this.veloxAddress}::solver_registry::get_solver_info`,
+                typeArguments: [],
+                functionArguments: [this.veloxAddress, solverAddress],
+            });
+            return this.parseSolverStats(result[0], solverAddress);
+        }
+        catch (error) {
+            console.error(`Error getting solver stats:`, error);
+            return {
+                address: solverAddress,
+                isRegistered: false,
+                isActive: false,
+                stake: 0n,
+                pendingUnstake: 0n,
+                unstakeAvailableAt: 0,
+                reputationScore: 0,
+                successfulFills: 0,
+                failedFills: 0,
+                totalVolume: 0n,
+                registeredAt: 0,
+                lastActive: 0,
+            };
+        }
     }
     // ============ Private Methods ============
     async pollIntents(callback) {
         const lastSeen = new Set();
-        // If skipExistingOnStartup is enabled, pre-populate lastSeen with existing intents
         if (this.skipExistingOnStartup) {
             try {
-                const existingIntents = await this.getPendingIntents();
-                console.log(`Skipping ${existingIntents.length} existing pending intents...`);
-                for (const intent of existingIntents) {
-                    lastSeen.add(intent.id);
+                const existingIntents = await this.getActiveIntents();
+                console.log(`Skipping ${existingIntents.length} existing active intents...`);
+                for (const record of existingIntents) {
+                    lastSeen.add(record.id);
                 }
             }
             catch (error) {
@@ -802,11 +465,11 @@ class VeloxSolver extends events_1.EventEmitter {
         }
         while (this.isRunning) {
             try {
-                const intents = await this.getPendingIntents();
-                for (const intent of intents) {
-                    if (!lastSeen.has(intent.id)) {
-                        callback(intent);
-                        lastSeen.add(intent.id);
+                const intents = await this.getActiveIntents();
+                for (const record of intents) {
+                    if (!lastSeen.has(record.id)) {
+                        callback(record);
+                        lastSeen.add(record.id);
                     }
                 }
             }
@@ -816,196 +479,144 @@ class VeloxSolver extends events_1.EventEmitter {
             await new Promise((resolve) => setTimeout(resolve, this.pollingInterval));
         }
     }
-    parseIntents(raw) {
-        return raw.map((r) => this.parseIntent(r));
+    parseIntentRecord(raw) {
+        const data = raw;
+        // Parse intent from enum variant
+        const rawIntent = data.intent;
+        const intent = this.parseIntent(rawIntent);
+        // Parse auction state - use empty auction if not present
+        const rawAuction = data.auction;
+        const auction = rawAuction ? this.parseAuctionState(rawAuction) : { type: intent_1.AuctionType.NONE };
+        // Parse status - default to ACTIVE if not present
+        const rawStatus = data.status;
+        const status = rawStatus?.type
+            ? (0, intent_1.parseIntentStatus)(rawStatus)
+            : intent_1.IntentStatus.ACTIVE;
+        // Parse fills - default to empty array if not present
+        const rawFills = data.fills || [];
+        const fills = rawFills.map((f) => {
+            const fill = f;
+            return {
+                solver: String(fill.solver || ''),
+                inputAmount: BigInt(String(fill.input_amount || '0')),
+                outputAmount: BigInt(String(fill.output_amount || '0')),
+                filledAt: Number(fill.filled_at || 0),
+            };
+        });
+        // Use escrowed_amount as escrow_remaining fallback
+        const escrowRemaining = data.escrow_remaining || data.escrowed_amount;
+        const totalOutputReceived = data.total_output_received || data.filled_amount || '0';
+        return {
+            id: Number(data.id || 0),
+            user: String(data.user || ''),
+            createdAt: Number(data.created_at || 0),
+            intent,
+            auction,
+            status,
+            escrowRemaining: BigInt(String(escrowRemaining || '0')),
+            totalOutputReceived: BigInt(String(totalOutputReceived || '0')),
+            fills,
+            chunksExecuted: Number(data.chunks_executed || 0),
+            nextExecution: Number(data.next_execution || 0),
+        };
     }
     parseIntent(raw) {
-        const record = raw;
-        const typeMap = {
-            0: intent_1.IntentType.SWAP,
-            1: intent_1.IntentType.LIMIT_ORDER,
-            2: intent_1.IntentType.TWAP,
-            3: intent_1.IntentType.DCA,
+        // Handle Move 2.0 enum variant pattern
+        const variant = raw.__variant__ || raw.type || raw.variant;
+        let type = intent_1.IntentType.SWAP;
+        if (typeof variant === 'string') {
+            type = (0, intent_1.parseIntentType)({ type: variant });
+        }
+        // Extract fields based on type
+        const inputToken = String(raw.input_token || '');
+        const outputToken = String(raw.output_token || '');
+        const intent = {
+            type,
+            inputToken,
+            outputToken,
         };
-        const statusMap = {
-            0: intent_1.IntentStatus.PENDING,
-            1: intent_1.IntentStatus.PARTIALLY_FILLED,
-            2: intent_1.IntentStatus.FILLED,
-            3: intent_1.IntentStatus.CANCELLED,
-            4: intent_1.IntentStatus.EXPIRED,
-        };
-        // Map for Move 2.0 enum __variant__ pattern
-        const statusVariantMap = {
-            'Pending': intent_1.IntentStatus.PENDING,
-            'PartiallyFilled': intent_1.IntentStatus.PARTIALLY_FILLED,
-            'Filled': intent_1.IntentStatus.FILLED,
-            'Cancelled': intent_1.IntentStatus.CANCELLED,
-            'Expired': intent_1.IntentStatus.EXPIRED,
-        };
-        // Helper to parse status from either number or __variant__ object
-        const parseStatus = (status) => {
-            if (typeof status === 'number') {
-                return statusMap[status] ?? intent_1.IntentStatus.PENDING;
-            }
-            if (status && typeof status === 'object' && '__variant__' in status) {
-                const variant = status.__variant__;
-                if (typeof variant === 'string') {
-                    const mapped = statusVariantMap[variant];
-                    if (mapped !== undefined) {
-                        return mapped;
-                    }
-                }
-            }
-            return intent_1.IntentStatus.PENDING;
-        };
-        // Safe string extraction helper
-        const safeGetString = (obj, key) => {
-            if (!obj)
-                return '0';
-            const value = obj[key];
-            if (value === undefined || value === null)
-                return '0';
-            return String(value);
-        };
-        // Extract intent data - it may be wrapped in an enum variant like { Swap: { ... } }
-        // or use __variant__ pattern like { __variant__: "LimitOrder", field1: ..., field2: ... }
-        let intent = record.intent;
-        let detectedType = null;
-        if (intent && typeof intent === 'object') {
-            // Check for __variant__ pattern (Move 2.0 enum serialization)
-            if ('__variant__' in intent) {
-                const variant = intent.__variant__;
-                if (variant === 'Swap')
-                    detectedType = intent_1.IntentType.SWAP;
-                else if (variant === 'LimitOrder')
-                    detectedType = intent_1.IntentType.LIMIT_ORDER;
-                else if (variant === 'TWAP')
-                    detectedType = intent_1.IntentType.TWAP;
-                else if (variant === 'DCA')
-                    detectedType = intent_1.IntentType.DCA;
-                // intent fields are at the same level, no unwrapping needed
-            }
-            else {
-                const keys = Object.keys(intent);
-                const firstKey = keys[0];
-                // Check for legacy pattern (e.g., { Swap: { ... } }, { LimitOrder: { ... } })
-                if (keys.length === 1 && firstKey && typeof intent[firstKey] === 'object') {
-                    // Detect type from enum variant name
-                    if (firstKey === 'Swap')
-                        detectedType = intent_1.IntentType.SWAP;
-                    else if (firstKey === 'LimitOrder')
-                        detectedType = intent_1.IntentType.LIMIT_ORDER;
-                    else if (firstKey === 'TWAP')
-                        detectedType = intent_1.IntentType.TWAP;
-                    else if (firstKey === 'DCA')
-                        detectedType = intent_1.IntentType.DCA;
-                    intent = intent[firstKey];
-                }
-            }
-        }
-        // Extract fields with fallbacks for different naming conventions
-        const inputToken = safeGetString(intent, 'input_token') || safeGetString(intent, 'input_coin') || '';
-        const outputToken = safeGetString(intent, 'output_token') || safeGetString(intent, 'output_coin') || '';
-        const minAmountOut = safeGetString(intent, 'min_amount_out') || '0';
-        const limitPrice = safeGetString(intent, 'limit_price');
-        // DCA-specific fields
-        const amountPerPeriod = safeGetString(intent, 'amount_per_period');
-        const totalPeriods = safeGetString(intent, 'total_periods');
-        const intervalSeconds = safeGetString(intent, 'interval_seconds');
-        const nextExecution = safeGetString(intent, 'next_execution');
-        // TWAP-specific fields
-        const totalAmount = safeGetString(intent, 'total_amount');
-        const numChunks = safeGetString(intent, 'num_chunks');
-        const maxSlippageBps = safeGetString(intent, 'max_slippage_bps');
-        const startTime = safeGetString(intent, 'start_time');
-        // Calculate amount_in based on intent type
-        let amountIn;
-        if (detectedType === intent_1.IntentType.DCA) {
-            // For DCA, inputAmount is amount_per_period (what solver needs to handle per execution)
-            amountIn = amountPerPeriod !== '0' ? amountPerPeriod : '0';
-        }
-        else if (detectedType === intent_1.IntentType.TWAP) {
-            // For TWAP, inputAmount is chunk amount (total_amount / num_chunks)
-            const total = BigInt(totalAmount || '0');
-            const chunks = BigInt(numChunks || '1');
-            amountIn = chunks > 0 ? (total / chunks).toString() : '0';
-        }
-        else {
-            amountIn = safeGetString(intent, 'amount_in') || safeGetString(intent, 'amount') || '0';
-        }
-        // Deadline/expiry extraction based on intent type
-        let deadline;
-        if (detectedType === intent_1.IntentType.DCA) {
-            // DCA deadline = next_execution + (total_periods * interval_seconds)
-            const nextExec = BigInt(nextExecution || '0');
-            const periods = BigInt(totalPeriods || '0');
-            const interval = BigInt(intervalSeconds || '0');
-            deadline = (nextExec + periods * interval).toString();
-        }
-        else if (detectedType === intent_1.IntentType.TWAP) {
-            // TWAP deadline = start_time + (num_chunks * interval_seconds)
-            const start = BigInt(startTime || '0');
-            const chunks = BigInt(numChunks || '0');
-            const interval = BigInt(intervalSeconds || '0');
-            deadline = (start + chunks * interval).toString();
-        }
-        else {
-            const rawDeadline = safeGetString(intent, 'deadline');
-            const rawExpiry = safeGetString(intent, 'expiry');
-            deadline = rawDeadline !== '0' ? rawDeadline : rawExpiry !== '0' ? rawExpiry : '0';
-        }
-        // Determine intent type based on enum variant name or fields present
-        let intentType = detectedType;
-        if (!intentType) {
-            // Fall back to field-based detection
-            if (intent && 'limit_price' in intent) {
-                intentType = intent_1.IntentType.LIMIT_ORDER;
-            }
-            else if (intent && 'num_chunks' in intent) {
-                intentType = intent_1.IntentType.TWAP;
-            }
-            else if (intent && 'amount_per_period' in intent) {
-                intentType = intent_1.IntentType.DCA;
-            }
-            else {
-                intentType = intent_1.IntentType.SWAP;
-            }
-        }
-        return {
-            id: safeGetString(record, 'id'),
-            type: intentType,
-            user: safeGetString(record, 'user'),
-            inputToken: { address: inputToken, symbol: '', decimals: 8 },
-            outputToken: { address: outputToken, symbol: '', decimals: 8 },
-            inputAmount: BigInt(amountIn),
-            minOutputAmount: minAmountOut !== '0' ? BigInt(minAmountOut) : undefined,
-            deadline: new Date(parseInt(deadline) * 1000),
-            status: parseStatus(record.status),
-            createdAt: new Date(parseInt(safeGetString(record, 'created_at')) * 1000),
-            limitPrice: intent?.limit_price ? BigInt(safeGetString(intent, 'limit_price')) : undefined,
-            partialFillAllowed: Boolean(intent?.partial_fill_allowed ?? intent?.partial_fill),
-            // TWAP fields
-            numChunks: numChunks !== '0' ? parseInt(numChunks) : undefined,
-            interval: intervalSeconds !== '0' ? parseInt(intervalSeconds) : undefined,
-            totalAmount: totalAmount !== '0' ? BigInt(totalAmount) : undefined,
-            maxSlippageBps: maxSlippageBps !== '0' ? parseInt(maxSlippageBps) : undefined,
-            startTime: startTime !== '0' ? new Date(parseInt(startTime) * 1000) : undefined,
-            // DCA fields
-            amountPerPeriod: amountPerPeriod !== '0' ? BigInt(amountPerPeriod) : undefined,
-            totalPeriods: totalPeriods !== '0' ? parseInt(totalPeriods) : undefined,
-            executedPeriods: record.filled_amount ? Math.floor(Number(record.filled_amount) / Number(amountPerPeriod || 1)) : 0,
-            nextExecution: nextExecution !== '0' ? new Date(parseInt(nextExecution) * 1000) : undefined,
-        };
+        // Swap fields
+        if (raw.amount_in)
+            intent.amountIn = BigInt(String(raw.amount_in));
+        if (raw.min_amount_out)
+            intent.minAmountOut = BigInt(String(raw.min_amount_out));
+        if (raw.deadline)
+            intent.deadline = Number(raw.deadline);
+        // LimitOrder fields
+        if (raw.limit_price)
+            intent.limitPrice = BigInt(String(raw.limit_price));
+        if (raw.expiry)
+            intent.expiry = Number(raw.expiry);
+        // TWAP fields
+        if (raw.total_amount)
+            intent.totalAmount = BigInt(String(raw.total_amount));
+        if (raw.num_chunks)
+            intent.numChunks = Number(raw.num_chunks);
+        if (raw.interval_seconds)
+            intent.intervalSeconds = Number(raw.interval_seconds);
+        if (raw.max_slippage_bps)
+            intent.maxSlippageBps = Number(raw.max_slippage_bps);
+        if (raw.start_time)
+            intent.startTime = Number(raw.start_time);
+        // DCA fields
+        if (raw.amount_per_period)
+            intent.amountPerPeriod = BigInt(String(raw.amount_per_period));
+        if (raw.total_periods)
+            intent.totalPeriods = Number(raw.total_periods);
+        return intent;
     }
-    parseSolverStats(raw) {
-        const data = raw[0];
+    parseAuctionState(raw) {
+        const variant = raw.__variant__ || raw.type;
+        if (!variant || variant === 'None') {
+            return { type: intent_1.AuctionType.NONE };
+        }
+        const type = (0, intent_1.parseAuctionType)({ type: String(variant) });
+        const auction = { type };
+        // SealedBidActive fields
+        if (raw.end_time)
+            auction.endTime = Number(raw.end_time);
+        if (raw.bids && Array.isArray(raw.bids)) {
+            auction.bids = raw.bids.map((b) => {
+                const bid = b;
+                return {
+                    solver: String(bid.solver || ''),
+                    outputAmount: BigInt(String(bid.output_amount || '0')),
+                    submittedAt: Number(bid.submitted_at || 0),
+                };
+            });
+        }
+        // SealedBidCompleted fields
+        if (raw.winner)
+            auction.winner = String(raw.winner);
+        if (raw.winning_bid)
+            auction.winningBid = BigInt(String(raw.winning_bid));
+        if (raw.fill_deadline)
+            auction.fillDeadline = Number(raw.fill_deadline);
+        // DutchActive fields
+        if (raw.start_price)
+            auction.startPrice = BigInt(String(raw.start_price));
+        if (raw.end_price)
+            auction.endPrice = BigInt(String(raw.end_price));
+        // DutchAccepted fields
+        if (raw.accepted_price)
+            auction.acceptedPrice = BigInt(String(raw.accepted_price));
+        return auction;
+    }
+    parseSolverStats(raw, address) {
+        const data = raw;
         return {
-            address: String(data.address || ''),
-            totalSolutions: Number(data.total_solutions || 0),
-            successfulSolutions: Number(data.successful_solutions || 0),
-            totalVolume: BigInt(String(data.total_volume || '0')),
-            reputation: Number(data.reputation || 0),
+            address,
+            isRegistered: true,
             isActive: Boolean(data.is_active),
+            stake: BigInt(String(data.stake || '0')),
+            pendingUnstake: BigInt(String(data.pending_unstake || '0')),
+            unstakeAvailableAt: Number(data.unstake_available_at || 0),
+            reputationScore: Number(data.reputation_score || 0),
+            successfulFills: Number(data.successful_fills || 0),
+            failedFills: Number(data.failed_fills || 0),
+            totalVolume: BigInt(String(data.total_volume || '0')),
+            registeredAt: Number(data.registered_at || 0),
+            lastActive: Number(data.last_active || 0),
         };
     }
 }

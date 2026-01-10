@@ -82,6 +82,10 @@ async function sponsorAndSubmitSignedTransaction(
 
     if (!result.success) {
       console.error('[Shinami API] Response indicates failure:', result.error);
+      // Log debug response if available
+      if (result.debug_shinami_response) {
+        console.error('[Shinami API] DEBUG - Full Shinami response:', JSON.stringify(result.debug_shinami_response, null, 2));
+      }
       return {
         success: false,
         error: result.error || 'Sponsorship and submission failed',
