@@ -124,17 +124,22 @@ export async function getTotalSolvers(): Promise<number> {
 }
 
 /**
- * Get count of currently active solvers
+ * Get count of total solvers registered
  */
 export async function getActiveSolverCount(): Promise<number> {
-  const result = await aptos.view({
-    payload: {
-      function: `${VELOX_ADDRESS}::solver_registry::get_active_solver_count`,
-      typeArguments: [],
-      functionArguments: [VELOX_ADDRESS],
-    },
-  });
-  return Number(result[0]);
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::solver_registry::get_total_solvers`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS],
+      },
+    });
+    return Number(result[0]);
+  } catch (error) {
+    console.warn('Failed to fetch active solver count:', error);
+    return 0;
+  }
 }
 
 /**
@@ -179,21 +184,28 @@ export async function isSolverActive(solverAddress: string): Promise<boolean> {
 
 /**
  * Get next execution time for a scheduled intent
+ * Note: Scheduled module not deployed - returns current time
  */
 export async function getNextExecutionTime(intentId: bigint): Promise<bigint> {
-  const result = await aptos.view({
-    payload: {
-      function: `${VELOX_ADDRESS}::scheduled::get_next_execution_time`,
-      typeArguments: [],
-      functionArguments: [VELOX_ADDRESS, intentId.toString()],
-    },
-  });
-  return BigInt(result[0] as string);
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::scheduled::get_next_execution_time`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+    return BigInt(result[0] as string);
+  } catch (error) {
+    console.warn('Scheduled module not available, returning current time');
+    return BigInt(Math.floor(Date.now() / 1000));
+  }
 }
 
 /**
  * Get scheduled intent details
  * Returns: (next_execution_time, chunks_remaining, is_paused)
+ * Note: Scheduled module not deployed - returns default values
  */
 export async function getScheduledIntent(
   intentId: bigint
@@ -219,11 +231,8 @@ export async function getScheduledIntent(
       isPaused,
     };
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes('MISSING_DATA')) {
-      return null;
-    }
-    throw error;
+    console.warn('Scheduled module not available');
+    return null;
   }
 }
 
@@ -247,16 +256,22 @@ export async function getExecutableIntents(): Promise<bigint[]> {
 
 /**
  * Get number of chunks executed for a scheduled intent
+ * Note: Scheduled module not deployed - returns 0
  */
 export async function getChunksExecuted(intentId: bigint): Promise<bigint> {
-  const result = await aptos.view({
-    payload: {
-      function: `${VELOX_ADDRESS}::scheduled::get_chunks_executed`,
-      typeArguments: [],
-      functionArguments: [VELOX_ADDRESS, intentId.toString()],
-    },
-  });
-  return BigInt(result[0] as string);
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::scheduled::get_chunks_executed`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS, intentId.toString()],
+      },
+    });
+    return BigInt(result[0] as string);
+  } catch (error) {
+    console.warn('Scheduled module not available, returning 0');
+    return BigInt(0);
+  }
 }
 
 // ============================================================================
