@@ -51,7 +51,7 @@ async function main() {
     const tx = await aptos.transaction.build.simple({
       sender: user.accountAddress,
       data: {
-        function: `${VELOX_ADDRESS}::submission::submit_swap_with_dutch_auction` as `${string}::${string}::${string}`,
+        function: `${VELOX_ADDRESS}::submission::submit_swap_dutch` as `${string}::${string}::${string}`,
         typeArguments: [],
         functionArguments: [
           VELOX_ADDRESS, // registry
