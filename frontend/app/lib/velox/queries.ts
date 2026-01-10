@@ -384,7 +384,6 @@ export async function fetchIntentTransactions(intentIds: bigint[]): Promise<void
       }
     }
 
-    console.log('[Velox] Transaction cache updated:', transactionCache.size, 'intents');
   } catch (error) {
     console.warn('[Velox] Failed to fetch transactions from Supabase:', error);
   }

@@ -137,7 +137,6 @@ export async function getActiveSolverCount(): Promise<number> {
     });
     return Number(result[0]);
   } catch (error) {
-    console.warn('Failed to fetch active solver count:', error);
     return 0;
   }
 }
@@ -197,7 +196,6 @@ export async function getNextExecutionTime(intentId: bigint): Promise<bigint> {
     });
     return BigInt(result[0] as string);
   } catch (error) {
-    console.warn('Scheduled module not available, returning current time');
     return BigInt(Math.floor(Date.now() / 1000));
   }
 }
@@ -231,7 +229,6 @@ export async function getScheduledIntent(
       isPaused,
     };
   } catch (error: unknown) {
-    console.warn('Scheduled module not available');
     return null;
   }
 }
@@ -269,7 +266,6 @@ export async function getChunksExecuted(intentId: bigint): Promise<bigint> {
     });
     return BigInt(result[0] as string);
   } catch (error) {
-    console.warn('Scheduled module not available, returning 0');
     return BigInt(0);
   }
 }
@@ -317,7 +313,6 @@ export async function getProtocolFeeBps(): Promise<number> {
     });
     return Number(result[0]);
   } catch (error) {
-    console.warn('Failed to fetch protocol fee, using default 500 bps:', error);
     return 500; // Default to 5% (500 bps)
   }
 }
@@ -336,7 +331,6 @@ export async function getSolverFeeBps(): Promise<number> {
     });
     return Number(result[0]);
   } catch (error) {
-    console.warn('Failed to fetch solver fee, using default 100 bps:', error);
     return 100; // Default to 1% (100 bps)
   }
 }

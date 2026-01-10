@@ -23,15 +23,11 @@ export async function createMovementWallet(
     );
 
     if (existingWallet) {
-      console.log('Movement wallet already exists:', existingWallet.address);
       return existingWallet;
     }
 
     // Create a new Aptos/Movement wallet
-    console.log('Creating new Movement wallet for user...');
     const wallet = await createWallet({ chainType: 'aptos' });
-    
-    console.log('Movement wallet created successfully:', (wallet as any).address);
     return wallet;
   } catch (error) {
     console.error('Error creating Movement wallet:', error);

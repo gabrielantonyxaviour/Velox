@@ -160,17 +160,13 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
   };
 
   const executeTransaction = async () => {
-    console.log('[SwapForm] executeTransaction called, isExecuting:', isExecuting);
-    console.log('[SwapForm] isPrivy:', isPrivy, 'hasSignRawHash:', !!signRawHash, 'hasPublicKeyHex:', !!publicKeyHex);
 
     // Guard against double execution
     if (isExecuting) {
-      console.warn('[SwapForm] BLOCKED - Already executing transaction!');
       return;
     }
 
     if (!walletAddress || !inputToken || !outputToken) {
-      console.log('[SwapForm] Early return - missing wallet or tokens');
       return;
     }
 
@@ -185,7 +181,6 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
       let txHash: string;
 
       if (isPrivy && signRawHash && publicKeyHex) {
-        console.log('[SwapForm] Using PRIVY path (submitSwapIntent)');
         txHash = await submitSwapIntent(
           walletAddress,
           inputToken.address,
@@ -196,9 +191,7 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
           signRawHash,
           publicKeyHex
         );
-        console.log('[SwapForm] Privy path returned hash:', txHash);
       } else if (signTransaction && signAndSubmitTransaction) {
-        console.log('[SwapForm] Using NATIVE path (submitSwapIntentNative)');
         txHash = await submitSwapIntentNative(
           walletAddress,
           inputToken.address,
@@ -209,7 +202,6 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
           signTransaction,
           signAndSubmitTransaction
         );
-        console.log('[SwapForm] Native path returned hash:', txHash);
       } else {
         throw new Error('No wallet connected');
       }

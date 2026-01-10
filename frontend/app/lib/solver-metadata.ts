@@ -49,7 +49,6 @@ export function storeSolverMetadata(
     createdAt: Date.now(),
   };
   saveStorage(storage);
-  console.log('[Velox] Stored solver metadata for:', registrationWallet);
 }
 
 /**

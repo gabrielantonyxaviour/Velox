@@ -101,13 +101,11 @@ async function smartSubmitWithPrivy(
   const sponsorshipAvailable = await isSponsorshipEnabled();
   if (sponsorshipAvailable) {
     try {
-      console.log('[Solver] Using Shinami Gas Station (Privy)');
       return await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
     } catch (error) {
       console.warn('[Solver] Sponsored submission failed, falling back:', error);
     }
   }
-  console.log('[Solver] Using user-paid gas (Privy)');
   return signAndSubmitWithPrivy(walletAddress, functionId, args, publicKeyHex, signRawHash);
 }
 
@@ -122,13 +120,11 @@ async function smartSubmitNative(
   const sponsorshipAvailable = await isSponsorshipEnabled();
   if (sponsorshipAvailable) {
     try {
-      console.log('[Solver] Using Shinami Gas Station (Native)');
       return await sponsoredSubmitNative(walletAddress, functionId, args, signTransaction);
     } catch (error) {
       console.warn('[Solver] Sponsored submission failed, falling back:', error);
     }
   }
-  console.log('[Solver] Using user-paid gas (Native)');
   return signAndSubmitNative(walletAddress, functionId, args, signAndSubmitTransaction);
 }
 

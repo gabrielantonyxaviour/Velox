@@ -50,7 +50,6 @@ async function fetchTokenPriceUSD(tokenSymbol: string): Promise<number> {
   // Map token symbol to CoinGecko ID
   const coinId = TOKEN_IDS[normalizedSymbol as keyof typeof TOKEN_IDS];
   if (!coinId) {
-    console.warn(`No CoinGecko ID for token: ${tokenSymbol}, using fallback price`);
     return fallbackPrice;
   }
 
@@ -66,7 +65,6 @@ async function fetchTokenPriceUSD(tokenSymbol: string): Promise<number> {
     );
 
     if (!response.ok) {
-      console.warn(`CoinGecko API returned ${response.status}, using fallback price`);
       return cached?.price || fallbackPrice;
     }
 
@@ -80,10 +78,7 @@ async function fetchTokenPriceUSD(tokenSymbol: string): Promise<number> {
 
     // Invalid data, use fallback
     return cached?.price || fallbackPrice;
-  } catch (error) {
-    // Silently handle errors - just log a warning, don't throw
-    console.warn(`Price API unavailable for ${tokenSymbol}, using fallback`);
-
+  } catch {
     // Return cached price if available, otherwise fallback
     return cached?.price || fallbackPrice;
   }

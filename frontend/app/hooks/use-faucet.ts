@@ -146,7 +146,6 @@ export function useFaucet(): UseFaucetReturn {
     const sponsorshipAvailable = await isSponsorshipEnabled();
     if (sponsorshipAvailable) {
       try {
-        console.log('[Faucet] Using Shinami Gas Station (Privy)');
         return await sponsoredSubmit(
           walletAddress,
           functionId,
@@ -159,7 +158,6 @@ export function useFaucet(): UseFaucetReturn {
       }
     }
 
-    console.log('[Faucet] Using user-paid gas (Privy)');
     return mintWithPrivyFallback(token, amount);
   };
 
@@ -175,7 +173,6 @@ export function useFaucet(): UseFaucetReturn {
     const sponsorshipAvailable = await isSponsorshipEnabled();
     if (sponsorshipAvailable) {
       try {
-        console.log('[Faucet] Using Shinami Gas Station (Native)');
         return await sponsoredSubmitNative(
           walletAddress,
           functionId,
@@ -187,7 +184,6 @@ export function useFaucet(): UseFaucetReturn {
       }
     }
 
-    console.log('[Faucet] Using user-paid gas (Native)');
     return mintWithNativeWalletFallback(token, amount);
   };
 

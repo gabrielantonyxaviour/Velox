@@ -123,12 +123,10 @@ export const submitCounterTransaction = async (
   signRawHash: SignRawHashFunction
 ): Promise<string> => {
   try {
-    console.log(`[Counter] Starting ${action} transaction`);
 
     const sponsorshipAvailable = await isSponsorshipEnabled();
     if (sponsorshipAvailable) {
       try {
-        console.log('[Counter] Using Shinami Gas Station (Privy)');
         return await sponsoredSubmit(
           walletAddress,
           getCounterFunction(action),
@@ -141,7 +139,6 @@ export const submitCounterTransaction = async (
       }
     }
 
-    console.log('[Counter] Using user-paid gas (Privy)');
     return submitCounterTransactionFallback(action, amount, walletAddress, publicKeyHex, signRawHash);
   } catch (error) {
     console.error(`Error submitting ${action} transaction:`, error);
@@ -160,12 +157,10 @@ export const submitCounterTransactionNative = async (
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> => {
   try {
-    console.log(`[Counter] Starting ${action} transaction (Native)`);
 
     const sponsorshipAvailable = await isSponsorshipEnabled();
     if (sponsorshipAvailable) {
       try {
-        console.log('[Counter] Using Shinami Gas Station (Native)');
         return await sponsoredSubmitNative(
           walletAddress,
           getCounterFunction(action),
@@ -177,7 +172,6 @@ export const submitCounterTransactionNative = async (
       }
     }
 
-    console.log('[Counter] Using user-paid gas (Native)');
     return submitCounterTransactionNativeFallback(action, amount, walletAddress, signAndSubmitTransaction);
   } catch (error) {
     console.error(`Error submitting ${action} transaction with native wallet:`, error);

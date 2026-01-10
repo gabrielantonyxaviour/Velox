@@ -61,7 +61,6 @@ export function storeAuctionIntent(
   };
 
   saveStorage(storage);
-  console.log('[Velox] Stored auction info for intent:', id, storage[id]);
 }
 
 /**
@@ -116,7 +115,6 @@ export function clearAllAuctionStorage(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(AUCTION_STORAGE_KEY);
-    console.log('[Velox] Cleared all auction storage');
   } catch {
     console.warn('[Velox] Failed to clear auction storage');
   }
