@@ -306,12 +306,17 @@ export async function getProtocolFeeBps(): Promise<number> {
  * Get solver fee in basis points
  */
 export async function getSolverFeeBps(): Promise<number> {
-  const result = await aptos.view({
-    payload: {
-      function: `${VELOX_ADDRESS}::settlement::get_solver_fee_bps`,
-      typeArguments: [],
-      functionArguments: [],
-    },
-  });
-  return Number(result[0]);
+  try {
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::settlement::get_fee_bps`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS],
+      },
+    });
+    return Number(result[0]);
+  } catch (error) {
+    console.warn('Failed to fetch solver fee, using default 100 bps:', error);
+    return 100; // Default to 1% (100 bps)
+  }
 }
