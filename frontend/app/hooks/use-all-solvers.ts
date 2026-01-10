@@ -16,6 +16,7 @@ export interface SolverListItem {
   name?: string;
   imageUrl?: string;
   description?: string;
+  operatorWallet?: string;
 }
 
 /**
@@ -108,6 +109,7 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
       name: metadata?.name,
       imageUrl: metadata?.imageUrl,
       description: metadata?.description,
+      operatorWallet: metadata?.operatorWallet,
     };
   } catch (error) {
     console.error('Error fetching solver stats for', address, error);
