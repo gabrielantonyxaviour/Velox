@@ -89,11 +89,6 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
         const txData = getIntentTransactionData(intent.id);
         const localTxHash = getIntentTxHash(intent.id.toString());
 
-          txData: txData ? { makerTx: txData.makerTxHash?.slice(0,10), takerCount: txData.takerTxHashes.length } : null,
-          localTxHash: localTxHash?.slice(0, 10),
-          fillCount: intent.fills.length
-        });
-
         // Get submitTxHash: prefer localStorage, fallback to Supabase
         const submitTxHash = localTxHash || txData?.makerTxHash || intent.submitTxHash;
 
