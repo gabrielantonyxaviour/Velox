@@ -167,12 +167,24 @@ export class VeloxSolver extends EventEmitter {
    */
   async validateSolverRegistration(): Promise<void> {
     if (!this.client.hasAccount()) {
-      throw new Error('❌ Solver account not configured. Please set SOLVER_PRIVATE_KEY in .env');
+      throw new Error(
+        '❌ SOLVER ACCOUNT INITIALIZATION FAILED\n\n' +
+        'Could not initialize account from SOLVER_PRIVATE_KEY.\n' +
+        'This usually means:\n' +
+        '  1. SOLVER_PRIVATE_KEY is not set in .env\n' +
+        '  2. SOLVER_PRIVATE_KEY is in an invalid format (should be 0x...)\n' +
+        '  3. Private key is malformed or corrupted\n\n' +
+        'Please verify your .env configuration and try again.'
+      );
     }
 
     const operatorAddress = this.client.getAccountAddress();
     if (!operatorAddress) {
-      throw new Error('❌ Could not determine operator address');
+      throw new Error(
+        '❌ OPERATOR ADDRESS DERIVATION FAILED\n\n' +
+        'Could not derive operator address from private key.\n' +
+        'Please check that your SOLVER_PRIVATE_KEY is valid.'
+      );
     }
 
     // Use registered solver address if provided, otherwise use operator address
