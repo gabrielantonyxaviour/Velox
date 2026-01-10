@@ -55,7 +55,7 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
     website: 'https://velox.dev',
     twitter: '@velox_solver',
     discord: 'discord.gg/velox',
-    stake: '10',
+    stake: '0.1',
   });
 
   const [imageFile, setImageFile] = useState<File | null>(null);
