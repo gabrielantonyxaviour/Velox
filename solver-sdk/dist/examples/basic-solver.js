@@ -11,9 +11,7 @@ async function main() {
             '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
         privateKey: process.env.SOLVER_PRIVATE_KEY,
         pollingInterval: 10000, // 10 seconds to avoid rate limiting
-        // Skip processing intents that existed before solver started - only react to new ones
         skipExistingOnStartup: true,
-        // Shinami Node Service for enhanced RPC reliability (optional)
         shinamiNodeKey,
     });
     console.log('Starting Velox Basic Solver...');
@@ -26,49 +24,32 @@ async function main() {
         console.error('Solver error:', error.message);
     });
     // Listen for new intents
-    solver.startIntentStream(async (intent) => {
+    solver.startIntentStream(async (record) => {
         console.log(`\n=== New Intent Detected ===`);
-        console.log(`ID: ${intent.id}`);
-        console.log(`Type: ${intent.type}`);
-        console.log(`User: ${intent.user}`);
-        // Show type-specific info
-        if (intent.type === intent_1.IntentType.DCA) {
-            console.log(`Amount per Period: ${intent.amountPerPeriod}`);
-            console.log(`Total Periods: ${intent.totalPeriods}`);
-            console.log(`Interval: ${intent.interval} seconds`);
-            console.log(`Next Execution: ${intent.nextExecution?.toISOString() || 'N/A'}`);
-            console.log(`Total Investment: ${intent.inputAmount} (${intent.amountPerPeriod} x ${intent.totalPeriods})`);
-        }
-        else if (intent.type === intent_1.IntentType.TWAP) {
-            console.log(`Total Amount: ${intent.totalAmount}`);
-            console.log(`Num Chunks: ${intent.numChunks}`);
-            console.log(`Chunk Amount: ${intent.inputAmount}`);
-        }
-        else {
-            console.log(`Input: ${intent.inputAmount} ${intent.inputToken.address}`);
-        }
-        console.log(`Output Token: ${intent.outputToken.address}`);
-        console.log(`Deadline: ${intent.deadline.toISOString()}`);
-        // Check if profitable
-        if (!canSolveProfitably(intent)) {
-            console.log('Skipping - not profitable');
+        console.log(`ID: ${record.id}`);
+        console.log(`Type: ${record.intent.type}`);
+        console.log(`User: ${record.user}`);
+        console.log(`Status: ${record.status}`);
+        // Check if we can fill this intent
+        if (record.status !== intent_1.IntentStatus.ACTIVE) {
+            console.log(`Skipping - intent status is ${record.status}`);
             return;
         }
         try {
-            if (intent.type === intent_1.IntentType.SWAP) {
-                await handleSwapIntent(solver, intent);
+            if (record.intent.type === intent_1.IntentType.SWAP) {
+                await handleSwapIntent(solver, record);
             }
-            else if (intent.type === intent_1.IntentType.LIMIT_ORDER) {
-                await handleLimitOrderIntent(solver, intent);
+            else if (record.intent.type === intent_1.IntentType.LIMIT_ORDER) {
+                await handleLimitOrderIntent(solver, record);
             }
-            else if (intent.type === intent_1.IntentType.DCA) {
-                await handleDCAIntent(solver, intent);
+            else if (record.intent.type === intent_1.IntentType.DCA) {
+                await handleDCAIntent(solver, record);
             }
-            else if (intent.type === intent_1.IntentType.TWAP) {
-                await handleTWAPIntent(solver, intent);
+            else if (record.intent.type === intent_1.IntentType.TWAP) {
+                await handleTWAPIntent(solver, record);
             }
             else {
-                console.log(`Skipping - unsupported intent type: ${intent.type}`);
+                console.log(`Skipping - unsupported intent type: ${record.intent.type}`);
             }
         }
         catch (error) {
@@ -86,270 +67,180 @@ async function main() {
         process.exit(0);
     });
 }
-async function handleSwapIntent(solver, intent) {
-    // First, check if there's an active sealed bid auction for this intent
-    const hasAuction = await solver.isSealedBidAuctionActive(intent.id);
-    if (hasAuction) {
-        console.log('Intent has an active sealed bid auction - handling via auction flow...');
-        await handleSealedBidAuction(solver, intent);
+async function handleSwapIntent(solver, record) {
+    const intent = record.intent;
+    console.log(`Processing SWAP intent...`);
+    console.log(`  Input: ${intent.amountIn} from ${intent.inputToken}`);
+    console.log(`  Output Token: ${intent.outputToken}`);
+    console.log(`  Min Output Required: ${intent.minAmountOut}`);
+    // Note: canFill check currently has SDK issues, skipping for now
+    // const canFill = await solver.canFill(record.id);
+    // if (!canFill) {
+    //   console.log(`Skipping - cannot fill this intent`);
+    //   return;
+    // }
+    // Find best route for the swap
+    console.log('Finding best swap route...');
+    const route = await solver.findBestRoute(intent.inputToken, intent.outputToken, intent.amountIn);
+    console.log(`Route found:`);
+    console.log(`  Expected output: ${route.expectedOutput}`);
+    console.log(`  Price impact: ${route.priceImpact}`);
+    // Check if output meets minimum requirement
+    if (route.expectedOutput < intent.minAmountOut) {
+        console.log(`Skipping - output does not meet minimum`);
+        console.log(`  Expected: ${route.expectedOutput}`);
+        console.log(`  Required: ${intent.minAmountOut}`);
         return;
     }
-    // Also check for Dutch auction
-    const dutch = await solver.getDutchAuction(intent.id);
-    if (dutch && dutch.isActive) {
-        console.log('Intent has an active Dutch auction - skipping (use dutch-solver instead)');
+    // Check deadline
+    const deadline = intent.deadline || Date.now() / 1000;
+    const now = Date.now() / 1000;
+    if (now > deadline) {
+        console.log(`Skipping - intent deadline passed`);
         return;
     }
-    // No auction - solve directly
-    console.log('No active auction - solving directly...');
-    // Calculate optimal solution using real-time CoinGecko prices
-    console.log('Calculating optimal solution for swap...');
-    const solution = await solver.calculateOptimalSolution(intent);
-    console.log(`Solution found:`);
-    console.log(`  Output: ${solution.outputAmount}`);
-    console.log(`  Price: ${solution.executionPrice}`);
-    // Check minimum output
-    if (intent.minOutputAmount && solution.outputAmount < intent.minOutputAmount) {
-        console.log(`Skipping - cannot meet minimum output`);
-        console.log(`  Min required: ${intent.minOutputAmount}`);
-        console.log(`  We can provide: ${solution.outputAmount}`);
-        return;
-    }
-    // Solve the swap by calling settlement::solve_swap
-    console.log('Solving swap intent...');
-    const result = await solver.solveSwap(intent.id, solution.outputAmount);
+    // Fill the swap
+    console.log('Filling swap intent...');
+    const result = await solver.fillSwap({
+        intentId: record.id,
+        fillInput: intent.amountIn,
+        outputAmount: route.expectedOutput,
+    });
     if (result.success) {
-        console.log(`\n=== Swap Intent Filled Successfully! ===`);
+        console.log(`\n=== Swap Filled Successfully! ===`);
         console.log(`TX Hash: ${result.txHash}`);
-        console.log(`Output Amount: ${solution.outputAmount}`);
+        console.log(`Output Amount: ${route.expectedOutput}`);
     }
     else {
-        console.log(`\n=== Swap Solution Failed ===`);
+        console.log(`\n=== Swap Fill Failed ===`);
         console.log(`Error: ${result.error}`);
     }
 }
-async function handleSealedBidAuction(solver, intent) {
-    // Get auction details
-    const auction = await solver.getSealedBidAuction(intent.id);
-    if (!auction) {
-        console.log('Could not get auction details');
+async function handleLimitOrderIntent(solver, record) {
+    const intent = record.intent;
+    console.log(`Processing LIMIT ORDER intent...`);
+    console.log(`  Input: ${intent.amountIn} from ${intent.inputToken}`);
+    console.log(`  Output Token: ${intent.outputToken}`);
+    console.log(`  Limit Price: ${intent.limitPrice}`);
+    console.log(`  Expiry: ${intent.expiry}`);
+    // Check deadline
+    const expiry = intent.expiry || Date.now() / 1000;
+    const now = Date.now() / 1000;
+    if (now > expiry) {
+        console.log(`Skipping - limit order expired`);
         return;
     }
-    console.log(`\n=== Sealed Bid Auction Details ===`);
-    console.log(`Start Time: ${new Date(Number(auction.startTime) * 1000).toISOString()}`);
-    console.log(`End Time: ${new Date(Number(auction.endTime) * 1000).toISOString()}`);
-    console.log(`Status: ${auction.status}`);
-    console.log(`Solutions submitted: ${auction.solutionCount}`);
-    const timeRemaining = await solver.getAuctionTimeRemaining(intent.id);
-    console.log(`Time remaining: ${timeRemaining} seconds`);
-    // Calculate our bid
-    console.log('Calculating optimal bid...');
-    const solution = await solver.calculateOptimalSolution(intent);
-    console.log(`Our bid:`);
-    console.log(`  Output Amount: ${solution.outputAmount}`);
-    console.log(`  Execution Price: ${solution.executionPrice}`);
-    // Check minimum output
-    if (intent.minOutputAmount && solution.outputAmount < intent.minOutputAmount) {
-        console.log(`Skipping - cannot meet minimum output`);
-        console.log(`  Min required: ${intent.minOutputAmount}`);
-        console.log(`  We can provide: ${solution.outputAmount}`);
+    // Find best route to check if we can meet limit price
+    console.log('Finding best route...');
+    const route = await solver.findBestRoute(intent.inputToken, intent.outputToken, intent.amountIn);
+    console.log(`Current market output: ${route.expectedOutput}`);
+    console.log(`Required min output: ${intent.limitPrice}`);
+    // For limit orders, check if current price meets the limit
+    if (route.expectedOutput < intent.limitPrice) {
+        console.log(`Skipping - market price does not meet limit price`);
         return;
     }
-    // Submit our bid
-    console.log('Submitting bid to auction...');
-    const bidResult = await solver.submitBid(intent.id, solution.outputAmount, solution.executionPrice);
-    if (!bidResult.success) {
-        console.log(`Failed to submit bid: ${bidResult.error}`);
-        return;
-    }
-    console.log(`\n=== Bid Submitted Successfully! ===`);
-    console.log(`TX Hash: ${bidResult.txHash}`);
-    console.log(`Output Amount: ${solution.outputAmount}`);
-    console.log(`Now waiting for auction to complete...`);
-    // Monitor auction and settle if we win
-    const settleResult = await solver.monitorAndSettleAuction(intent.id, 2000);
-    if (settleResult) {
-        console.log(`\n=== Won Auction & Settled Successfully! ===`);
-        console.log(`Settle TX: ${settleResult.txHash}`);
+    // Fill the limit order
+    console.log('Filling limit order...');
+    const result = await solver.fillLimitOrder({
+        intentId: record.id,
+        fillInput: intent.amountIn,
+        outputAmount: route.expectedOutput,
+    });
+    if (result.success) {
+        console.log(`\n=== Limit Order Filled Successfully! ===`);
+        console.log(`TX Hash: ${result.txHash}`);
+        console.log(`Output Amount: ${route.expectedOutput}`);
     }
     else {
-        console.log(`\n=== Did not win the auction ===`);
+        console.log(`\n=== Limit Order Fill Failed ===`);
+        console.log(`Error: ${result.error}`);
     }
 }
-async function handleLimitOrderIntent(solver, intent) {
-    console.log('Processing limit order...');
-    console.log(`  Limit Price: ${intent.limitPrice}`);
-    console.log(`  Partial Fill Allowed: ${intent.partialFillAllowed}`);
-    console.log(`  Expiry: ${intent.deadline.toISOString()}`);
-    const PRICE_CHECK_INTERVAL_MS = 15000; // 15 seconds
-    // Continuously monitor price until fill or expiry
-    while (true) {
-        // Check if order has expired
-        const now = new Date();
-        if (now >= intent.deadline) {
-            console.log(`\n=== Limit Order Expired ===`);
-            console.log(`  Order ID: ${intent.id}`);
-            console.log(`  Expired at: ${intent.deadline.toISOString()}`);
-            return;
-        }
-        const timeToExpiry = Math.floor((intent.deadline.getTime() - now.getTime()) / 1000);
-        console.log(`\nChecking limit order price... (${timeToExpiry}s until expiry)`);
-        // Check if current market price meets the limit price
-        const { canFill, executionPrice, outputAmount } = await solver.canFillLimitOrder(intent);
-        if (canFill) {
-            console.log(`Limit price met! Filling order...`);
-            console.log(`  Fill amount: ${intent.inputAmount}`);
-            console.log(`  Output amount: ${outputAmount}`);
-            console.log(`  Execution price: ${executionPrice}`);
-            // For now, fill the entire order
-            // TODO: Support partial fills based on liquidity/strategy
-            const result = await solver.solveLimitOrder(intent.id, intent.inputAmount, outputAmount);
-            if (result.success) {
-                console.log(`\n=== Limit Order Filled Successfully! ===`);
-                console.log(`TX Hash: ${result.txHash}`);
-                console.log(`Fill Amount: ${intent.inputAmount}`);
-                console.log(`Output Amount: ${outputAmount}`);
-            }
-            else {
-                console.log(`\n=== Limit Order Failed ===`);
-                console.log(`Error: ${result.error}`);
-            }
-            return;
-        }
-        // Price not met yet, log and wait
-        console.log(`  Price not met - waiting for market to move`);
-        console.log(`  Required limit price: ${intent.limitPrice}`);
-        console.log(`  Current execution price: ${executionPrice}`);
-        console.log(`  Next check in ${PRICE_CHECK_INTERVAL_MS / 1000}s...`);
-        // Wait before checking again
-        await new Promise(resolve => setTimeout(resolve, PRICE_CHECK_INTERVAL_MS));
-    }
-}
-async function handleDCAIntent(solver, intent) {
-    console.log('Processing DCA intent...');
+async function handleDCAIntent(solver, record) {
+    const intent = record.intent;
+    console.log(`Processing DCA intent...`);
     console.log(`  Amount per Period: ${intent.amountPerPeriod}`);
     console.log(`  Total Periods: ${intent.totalPeriods}`);
-    console.log(`  Interval: ${intent.interval} seconds`);
-    console.log(`  Next Execution: ${intent.nextExecution?.toISOString()}`);
-    // Check if this period is ready for execution
-    const isReady = await solver.isDCAPeriodReady(intent.id);
+    console.log(`  Interval: ${intent.intervalSeconds}s`);
+    console.log(`  Periods executed: ${record.chunksExecuted}/${intent.totalPeriods}`);
+    // Check if next period is ready
+    const isReady = (0, intent_1.isNextChunkReady)(record);
     if (!isReady) {
-        console.log(`Skipping DCA - period not ready for execution yet`);
-        console.log(`  Next execution time: ${intent.nextExecution?.toISOString()}`);
+        const nextTime = new Date(record.nextExecution * 1000).toISOString();
+        console.log(`Skipping - next period not ready until ${nextTime}`);
         return;
     }
-    // Check if DCA is completed
-    const isCompleted = await solver.isScheduledCompleted(intent.id);
-    if (isCompleted) {
-        console.log(`Skipping DCA - all periods completed`);
+    // Check if all periods are complete
+    const remaining = (0, intent_1.getRemainingChunks)(record);
+    if (remaining <= 0) {
+        console.log(`Skipping - all DCA periods completed`);
         return;
     }
-    // Get executed periods
-    const executedPeriods = await solver.getExecutedPeriods(intent.id);
-    console.log(`  Periods Executed: ${executedPeriods}/${intent.totalPeriods}`);
-    // Calculate output for this period using CoinGecko prices
-    // For DCA, inputAmount is the amount_per_period
-    console.log('Calculating optimal solution for DCA period...');
-    const route = await solver.findBestRoute(intent.inputToken.address, intent.outputToken.address, intent.inputAmount // This is amount_per_period for DCA
-    );
-    const outputAmount = route.expectedOutput;
-    console.log(`  Period Output: ${outputAmount}`);
-    // Solve the DCA period
-    console.log('Solving DCA period...');
-    const result = await solver.solveDCAPeriod(intent.id, outputAmount);
+    // Find best route for this period
+    console.log('Finding best route for DCA period...');
+    const route = await solver.findBestRoute(intent.inputToken, intent.outputToken, intent.amountPerPeriod);
+    console.log(`  Period Output: ${route.expectedOutput}`);
+    // Fill the DCA period
+    console.log('Filling DCA period...');
+    const result = await solver.fillDcaPeriod({
+        intentId: record.id,
+        outputAmount: route.expectedOutput,
+    });
     if (result.success) {
         console.log(`\n=== DCA Period Filled Successfully! ===`);
         console.log(`TX Hash: ${result.txHash}`);
-        console.log(`Period: ${executedPeriods + 1}/${intent.totalPeriods}`);
-        console.log(`Period Input: ${intent.inputAmount}`);
-        console.log(`Period Output: ${outputAmount}`);
+        console.log(`Period: ${record.chunksExecuted + 1}/${intent.totalPeriods}`);
+        console.log(`Period Output: ${route.expectedOutput}`);
     }
     else {
-        console.log(`\n=== DCA Period Failed ===`);
+        console.log(`\n=== DCA Period Fill Failed ===`);
         console.log(`Error: ${result.error}`);
     }
 }
-async function handleTWAPIntent(solver, intent) {
-    console.log('Processing TWAP intent...');
+async function handleTWAPIntent(solver, record) {
+    const intent = record.intent;
+    console.log(`Processing TWAP intent...`);
     console.log(`  Total Amount: ${intent.totalAmount}`);
     console.log(`  Num Chunks: ${intent.numChunks}`);
-    console.log(`  Chunk Amount: ${intent.inputAmount}`);
-    console.log(`  Interval: ${intent.interval} seconds`);
-    console.log(`  Max Slippage: ${intent.maxSlippageBps} bps`);
-    console.log(`  Start Time: ${intent.startTime?.toISOString()}`);
-    // Check if this chunk is ready for execution
-    const isReady = await solver.isTWAPChunkReady(intent.id);
+    console.log(`  Interval: ${intent.intervalSeconds}s`);
+    console.log(`  Max Slippage: ${intent.maxSlippageBps}bps`);
+    console.log(`  Chunks executed: ${record.chunksExecuted}/${intent.numChunks}`);
+    // Check if next chunk is ready
+    const isReady = (0, intent_1.isNextChunkReady)(record);
     if (!isReady) {
-        console.log(`Skipping TWAP - chunk not ready for execution yet`);
-        console.log(`  Start time: ${intent.startTime?.toISOString()}`);
+        const nextTime = new Date(record.nextExecution * 1000).toISOString();
+        console.log(`Skipping - next chunk not ready until ${nextTime}`);
         return;
     }
-    // Check if TWAP is completed
-    const isCompleted = await solver.isScheduledCompleted(intent.id);
-    if (isCompleted) {
-        console.log(`Skipping TWAP - all chunks completed`);
+    // Check if all chunks are complete
+    const remaining = (0, intent_1.getRemainingChunks)(record);
+    if (remaining <= 0) {
+        console.log(`Skipping - all TWAP chunks completed`);
         return;
     }
-    // Get executed chunks
-    const executedChunks = await solver.getExecutedPeriods(intent.id);
-    console.log(`  Chunks Executed: ${executedChunks}/${intent.numChunks}`);
-    // Calculate output for this chunk using CoinGecko prices
-    // For TWAP, inputAmount is the chunk amount (total_amount / num_chunks)
-    console.log('Calculating optimal solution for TWAP chunk...');
-    const route = await solver.findBestRoute(intent.inputToken.address, intent.outputToken.address, intent.inputAmount // This is chunk amount for TWAP
-    );
-    const outputAmount = route.expectedOutput;
-    console.log(`  Chunk Output: ${outputAmount}`);
-    // Solve the TWAP chunk
-    console.log('Solving TWAP chunk...');
-    const result = await solver.solveTWAPChunk(intent.id, outputAmount);
+    // Calculate chunk amount
+    const chunkAmount = (intent.totalAmount ?? BigInt(0)) / BigInt(intent.numChunks ?? 1);
+    // Find best route for this chunk
+    console.log('Finding best route for TWAP chunk...');
+    const route = await solver.findBestRoute(intent.inputToken, intent.outputToken, chunkAmount);
+    console.log(`  Chunk Output: ${route.expectedOutput}`);
+    // Fill the TWAP chunk
+    console.log('Filling TWAP chunk...');
+    const result = await solver.fillTwapChunk({
+        intentId: record.id,
+        outputAmount: route.expectedOutput,
+    });
     if (result.success) {
         console.log(`\n=== TWAP Chunk Filled Successfully! ===`);
         console.log(`TX Hash: ${result.txHash}`);
-        console.log(`Chunk: ${executedChunks + 1}/${intent.numChunks}`);
-        console.log(`Chunk Input: ${intent.inputAmount}`);
-        console.log(`Chunk Output: ${outputAmount}`);
+        console.log(`Chunk: ${record.chunksExecuted + 1}/${intent.numChunks}`);
+        console.log(`Chunk Output: ${route.expectedOutput}`);
     }
     else {
-        console.log(`\n=== TWAP Chunk Failed ===`);
+        console.log(`\n=== TWAP Chunk Fill Failed ===`);
         console.log(`Error: ${result.error}`);
     }
-}
-function canSolveProfitably(intent) {
-    // Basic profitability check
-    // In production, this should consider:
-    // - Gas costs
-    // - Price impact
-    // - Competition from other solvers
-    // - Current market conditions
-    const now = new Date();
-    // For DCA intents, check next execution time instead of deadline
-    if (intent.type === intent_1.IntentType.DCA) {
-        // DCA intents are always potentially profitable if not completed
-        // The actual timing check happens in handleDCAIntent via isDCAPeriodReady
-        // Just verify the overall deadline hasn't passed
-        const timeToDeadline = intent.deadline.getTime() - now.getTime();
-        if (timeToDeadline < 0) {
-            console.log(`DCA deadline passed: ${intent.deadline.toISOString()}`);
-            return false;
-        }
-        return true;
-    }
-    // For TWAP intents, similar logic
-    if (intent.type === intent_1.IntentType.TWAP) {
-        const timeToDeadline = intent.deadline.getTime() - now.getTime();
-        if (timeToDeadline < 0) {
-            return false;
-        }
-        return true;
-    }
-    // For Swap and LimitOrder, use the existing deadline check
-    const timeToDeadline = intent.deadline.getTime() - now.getTime();
-    // Skip if less than 10 seconds to deadline
-    if (timeToDeadline < 10000) {
-        return false;
-    }
-    return true;
 }
 main().catch((error) => {
     console.error('Fatal error:', error);

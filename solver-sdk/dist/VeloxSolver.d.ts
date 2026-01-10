@@ -1,9 +1,11 @@
 import { EventEmitter } from 'events';
-import { Intent, DutchAuction, SealedBidAuction } from './types/intent';
-import { Solution, SolutionResult, SwapRoute, SolverStats } from './types/solution';
+import { IntentRecord } from './types/intent';
+import { FillParams, ChunkFillParams, FillResult, SolverStats, SwapRoute } from './types/solution';
 export interface VeloxSolverConfig {
     rpcUrl: string;
     veloxAddress: string;
+    /** Fee config address (defaults to veloxAddress) */
+    feeConfigAddr?: string;
     privateKey?: string;
     graphqlUrl?: string;
     pollingInterval?: number;
@@ -16,136 +18,76 @@ export declare class VeloxSolver extends EventEmitter {
     private client;
     private graphql?;
     private veloxAddress;
+    private feeConfigAddr;
     private isRunning;
     private pollingInterval;
     private skipExistingOnStartup;
     constructor(config: VeloxSolverConfig);
-    getPendingIntents(): Promise<Intent[]>;
-    getIntent(intentId: string): Promise<Intent | null>;
-    startIntentStream(callback: (intent: Intent) => void): void;
+    getActiveIntents(): Promise<IntentRecord[]>;
+    getIntent(intentId: number): Promise<IntentRecord | null>;
+    startIntentStream(callback: (record: IntentRecord) => void): void;
     stopIntentStream(): void;
-    submitSolution(solution: Solution): Promise<SolutionResult>;
-    executeSettlement(intentId: string): Promise<SolutionResult>;
     /**
-     * Solve a swap intent by directly providing output tokens
-     * Calls settlement::solve_swap which transfers:
-     * - Output tokens from solver to user
-     * - Input tokens from escrow to solver
+     * Fill a swap intent (partial or full)
+     * Uses settlement::fill_swap
      */
-    solveSwap(intentId: string, outputAmount: bigint): Promise<SolutionResult>;
+    fillSwap(params: FillParams): Promise<FillResult>;
     /**
-     * Solve a limit order intent (supports partial fills)
-     * Calls settlement::solve_limit_order which:
-     * - Validates price meets limit_price constraint
-     * - Transfers output tokens from solver to user
-     * - Transfers fill_amount of input tokens from escrow to solver
+     * Fill a limit order (partial or full)
+     * Uses settlement::fill_limit_order
      */
-    solveLimitOrder(intentId: string, fillAmount: bigint, outputAmount: bigint): Promise<SolutionResult>;
+    fillLimitOrder(params: FillParams): Promise<FillResult>;
     /**
-     * Solve a DCA period by directly providing output tokens
-     * Calls settlement::solve_dca_period which transfers:
-     * - Output tokens from solver to user
-     * - Period's input tokens from escrow to solver
+     * Fill a TWAP chunk
+     * Uses settlement::fill_twap_chunk
      */
-    solveDCAPeriod(intentId: string, outputAmount: bigint, scheduledRegistryAddr?: string): Promise<SolutionResult>;
+    fillTwapChunk(params: ChunkFillParams): Promise<FillResult>;
     /**
-     * Solve a TWAP chunk by directly providing output tokens
-     * Calls settlement::solve_twap_chunk which transfers:
-     * - Output tokens from solver to user
-     * - Chunk's input tokens from escrow to solver
+     * Fill a DCA period
+     * Uses settlement::fill_dca_period
      */
-    solveTWAPChunk(intentId: string, outputAmount: bigint, scheduledRegistryAddr?: string): Promise<SolutionResult>;
+    fillDcaPeriod(params: ChunkFillParams): Promise<FillResult>;
     /**
-     * Check if a TWAP chunk is ready for execution
+     * Check if solver can fill an intent
      */
-    isTWAPChunkReady(intentId: string, scheduledRegistryAddr?: string): Promise<boolean>;
+    canFill(intentId: number): Promise<boolean>;
     /**
-     * Check if a DCA period is ready for execution
+     * Calculate minimum output for a partial fill
      */
-    isDCAPeriodReady(intentId: string, scheduledRegistryAddr?: string): Promise<boolean>;
+    calculateMinOutput(intentId: number, fillInput: bigint): Promise<bigint>;
     /**
-     * Check if a DCA/TWAP is completed
+     * Get current Dutch auction price
      */
-    isScheduledCompleted(intentId: string, scheduledRegistryAddr?: string): Promise<boolean>;
+    getDutchPrice(intentId: number): Promise<bigint>;
     /**
-     * Get the number of periods/chunks executed for a scheduled intent
+     * Get auction winner
      */
-    getExecutedPeriods(intentId: string, scheduledRegistryAddr?: string): Promise<number>;
-    /**
-     * Check if a limit order can be filled at current market price
-     * Returns the execution price if fillable, null otherwise
-     */
-    canFillLimitOrder(intent: Intent): Promise<{
-        canFill: boolean;
-        executionPrice: bigint;
-        outputAmount: bigint;
+    getAuctionWinner(intentId: number): Promise<{
+        hasWinner: boolean;
+        winner: string;
     }>;
-    calculateOptimalSolution(intent: Intent): Promise<Solution>;
+    /**
+     * Get fee basis points
+     */
+    getFeeBps(): Promise<number>;
+    /**
+     * Submit a bid to a sealed-bid auction
+     */
+    submitBid(intentId: number, outputAmount: bigint): Promise<FillResult>;
+    /**
+     * Accept a Dutch auction at current price
+     */
+    acceptDutchAuction(intentId: number): Promise<FillResult>;
+    /**
+     * Complete a sealed-bid auction (after end time)
+     */
+    completeSealedBid(intentId: number): Promise<FillResult>;
     findBestRoute(tokenIn: string, tokenOut: string, amountIn: bigint): Promise<SwapRoute>;
-    getDutchAuction(intentId: string): Promise<DutchAuction | null>;
-    getDutchPrice(intentId: string): Promise<bigint>;
-    isDutchActive(intentId: string): Promise<boolean>;
-    getActiveDutchCount(): Promise<bigint>;
-    acceptDutchAuction(intentId: string): Promise<SolutionResult>;
-    settleDutchAuction(intentId: string): Promise<SolutionResult>;
-    /**
-     * Calculate time until Dutch price reaches target price
-     */
-    calculateTimeToPrice(dutch: DutchAuction, targetPrice: bigint): bigint;
-    /**
-     * Monitor Dutch auction and accept when price reaches threshold
-     */
-    monitorAndAcceptDutch(intentId: string, maxPrice: bigint, pollIntervalMs?: number): Promise<{
-        txHash: string;
-        price: bigint;
-    } | null>;
-    /**
-     * Check if a sealed bid auction is active for an intent
-     */
-    isSealedBidAuctionActive(intentId: string): Promise<boolean>;
-    /**
-     * Get sealed bid auction details
-     */
-    getSealedBidAuction(intentId: string): Promise<SealedBidAuction | null>;
-    /**
-     * Get time remaining for a sealed bid auction
-     */
-    getAuctionTimeRemaining(intentId: string): Promise<number>;
-    /**
-     * Get winner of a sealed bid auction
-     */
-    getAuctionWinner(intentId: string): Promise<string | null>;
-    /**
-     * Check if solver is the winner of a sealed bid auction
-     */
-    isAuctionWinner(intentId: string): Promise<boolean>;
-    /**
-     * Submit a bid to a sealed bid auction
-     * Calls auction::submit_solution
-     */
-    submitBid(intentId: string, outputAmount: bigint, executionPrice: bigint): Promise<SolutionResult>;
-    /**
-     * Close a sealed bid auction after duration ends
-     * Calls auction::close_auction
-     */
-    closeAuction(intentId: string): Promise<SolutionResult>;
-    /**
-     * Settle an intent from a completed sealed bid auction
-     * Only the winner can settle
-     * Calls settlement::settle_from_auction
-     */
-    settleFromAuction(intentId: string): Promise<SolutionResult>;
-    /**
-     * Monitor sealed bid auction and settle when won
-     * Returns null if auction not won
-     */
-    monitorAndSettleAuction(intentId: string, pollIntervalMs?: number): Promise<{
-        txHash: string;
-    } | null>;
     getSolverStats(address?: string): Promise<SolverStats>;
     private pollIntents;
-    private parseIntents;
+    private parseIntentRecord;
     private parseIntent;
+    private parseAuctionState;
     private parseSolverStats;
 }
 //# sourceMappingURL=VeloxSolver.d.ts.map

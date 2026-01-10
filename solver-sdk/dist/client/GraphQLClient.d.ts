@@ -9,5 +9,6 @@ export declare class VeloxGraphQLClient {
     getIntentById(id: string): Promise<Intent | null>;
     getIntentsByUser(user: string): Promise<Intent[]>;
     private parseIntent;
+    private parseIntentType;
 }
 //# sourceMappingURL=GraphQLClient.d.ts.map

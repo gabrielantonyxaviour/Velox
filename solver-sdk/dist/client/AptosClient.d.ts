@@ -2,7 +2,7 @@ import { Aptos, Account } from '@aptos-labs/ts-sdk';
 export interface AptosClientConfig {
     rpcUrl: string;
     privateKey?: string;
-    /** Shinami API key - currently used for Gas Station only, Node Service pending */
+    /** Shinami Node Service API key (for enhanced RPC reliability) */
     shinamiNodeKey?: string;
 }
 export declare class VeloxAptosClient {

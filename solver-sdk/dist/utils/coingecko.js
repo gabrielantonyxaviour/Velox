@@ -20,7 +20,7 @@ const TOKEN_MAPPING = {
     },
 };
 const priceCache = {};
-const CACHE_DURATION_MS = 30000; // 30 seconds
+const CACHE_DURATION_MS = 300000; // 5 minutes - reduce CoinGecko API call frequency
 /**
  * Fetch USD price for a token from CoinGecko
  */
