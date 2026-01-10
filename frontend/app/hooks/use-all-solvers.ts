@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { aptos, VELOX_ADDRESS, MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
-import { getSolverMetadata, type SolverMetadata } from '@/app/lib/solver-metadata';
+import { aptos, VELOX_ADDRESS } from '@/app/lib/aptos';
+import { getSolverMetadata } from '@/app/lib/solver-metadata';
 
 export interface SolverListItem {
   address: string;
@@ -18,48 +18,21 @@ export interface SolverListItem {
   description?: string;
 }
 
-interface SolverRegisteredEvent {
-  solver: string;
-  stake: string;
-  registered_at: string;
-}
-
-interface Transaction {
-  events?: Array<{
-    type: string;
-    data: Record<string, unknown>;
-  }>;
-}
-
-const RPC_URL = MOVEMENT_CONFIGS[CURRENT_NETWORK].fullnode;
-
 /**
- * Fetch all registered solver addresses from events
+ * Fetch all registered solver addresses from contract
  */
 async function fetchSolverAddresses(): Promise<string[]> {
   try {
-    const response = await fetch(
-      `${RPC_URL}/accounts/${VELOX_ADDRESS}/transactions?limit=200`
-    );
-    if (!response.ok) return [];
+    const result = await aptos.view({
+      payload: {
+        function: `${VELOX_ADDRESS}::solver_registry::get_all_solvers`,
+        typeArguments: [],
+        functionArguments: [VELOX_ADDRESS],
+      },
+    });
 
-    const transactions = (await response.json()) as Transaction[];
-    const solverAddresses = new Set<string>();
-
-    for (const tx of transactions) {
-      if (!tx.events) continue;
-
-      for (const event of tx.events) {
-        if (event.type === `${VELOX_ADDRESS}::solver_registry::SolverRegistered`) {
-          const data = event.data as unknown as SolverRegisteredEvent;
-          if (data.solver) {
-            solverAddresses.add(data.solver);
-          }
-        }
-      }
-    }
-
-    return Array.from(solverAddresses);
+    const addresses = result[0] as string[];
+    return Array.isArray(addresses) ? addresses : [];
   } catch (error) {
     console.error('Error fetching solver addresses:', error);
     return [];
