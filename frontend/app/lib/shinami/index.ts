@@ -7,6 +7,7 @@ export {
   sponsoredSubmit,
   sponsoredSubmitNative,
   isSponsorshipEnabled,
+  TransactionSubmittedError,
   type SignRawHashFunction,
   type SponsorAndSubmitResult,
 } from './client';

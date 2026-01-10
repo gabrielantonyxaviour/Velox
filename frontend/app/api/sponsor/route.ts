@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
 
     // Call Shinami Gas Station API with gas_sponsorAndSubmitSignedTransaction
     // This method sponsors the transaction, sets the fee payer address, and submits it
+    console.log('[Sponsor API] Calling Shinami API...');
     const response = await fetch(SHINAMI_GAS_STATION_URL, {
       method: 'POST',
       headers: {
@@ -50,9 +51,11 @@ export async function POST(request: NextRequest) {
       }),
     });
 
+    console.log('[Sponsor API] Shinami response status:', response.status);
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Sponsor API] Shinami error:', response.status, errorText);
+      console.error('[Sponsor API] Shinami HTTP error:', response.status, errorText);
       return NextResponse.json(
         { success: false, error: `Shinami API error: ${response.status}` },
         { status: 502 }
@@ -60,6 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await response.json();
+    console.log('[Sponsor API] Shinami raw result:', JSON.stringify(result, null, 2));
 
     if (result.error) {
       console.error('[Sponsor API] Shinami RPC error:', result.error);
@@ -69,10 +73,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Result contains PendingTransactionResponse with hash
+    // Try different paths to find the transaction hash
+    // Shinami might return it in different locations depending on the response format
+    const txHash =
+      result.result?.hash ||           // Standard: result.result.hash
+      result.hash ||                   // Direct: result.hash
+      result.result?.transaction_hash || // Alternative: result.result.transaction_hash
+      result.transaction_hash ||       // Alternative: result.transaction_hash
+      (typeof result.result === 'string' ? result.result : null); // Sometimes just the hash as string
+
+    console.log('[Sponsor API] Extracted transaction hash:', txHash);
+    console.log('[Sponsor API] result.result type:', typeof result.result);
+    console.log('[Sponsor API] result.result value:', result.result);
+
+    if (!txHash) {
+      console.error('[Sponsor API] Could not find hash in result. Full response:', JSON.stringify(result, null, 2));
+      // Return the full Shinami response for debugging
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No transaction hash in response',
+          debug_shinami_response: result  // Include full response for debugging
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
-      hash: result.result.hash,
+      hash: txHash,
       pendingTransaction: result.result,
     });
   } catch (error) {
