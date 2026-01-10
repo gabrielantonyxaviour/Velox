@@ -7,7 +7,7 @@ import { MySolverCard } from './my-solver-card';
 import { RegisterSolverCard } from './register-solver-card';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useSolverInfo } from '@/app/hooks/use-solvers';
 import { useState } from 'react';
 
@@ -46,21 +46,12 @@ export default function MySolverPageContent({ walletAddress }: MySolverPageConte
       <Header address={walletAddress} />
 
       <main className="flex-1 container mx-auto px-4 py-6 flex flex-col min-h-0">
-        {/* Back Button & Title */}
-        <div className="flex items-center gap-4 mb-6 flex-shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/solvers')}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">My Solver</h1>
-            <p className="text-muted-foreground mt-1">
-              Manage your solver registration and stake
-            </p>
-          </div>
+        {/* Title */}
+        <div className="mb-6 flex-shrink-0">
+          <h1 className="text-3xl font-bold">My Solver</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage your solver registration and stake
+          </p>
         </div>
 
         {/* Content */}
