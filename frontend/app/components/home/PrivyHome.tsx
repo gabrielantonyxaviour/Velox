@@ -30,12 +30,15 @@ export default function PrivyHome() {
 
   const handleIntentSuccess = useCallback((txHash: string) => {
     showTxSuccess('Intent submitted successfully!', txHash);
-    refetch();
+    // Refetch with a slight delay to allow chain to finalize
+    setTimeout(() => refetch(), 1000);
   }, [refetch]);
 
   const handleIntentError = useCallback((error: string) => {
     showError('Transaction failed', error);
-  }, []);
+    // Refetch even on error in case transaction partially succeeded
+    setTimeout(() => refetch(), 1000);
+  }, [refetch]);
 
   const handleCancelIntent = useCallback(async (intentId: bigint) => {
     if (!walletContext.walletAddress) return;
