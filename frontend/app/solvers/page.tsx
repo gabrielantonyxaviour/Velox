@@ -5,9 +5,7 @@ import { Footer } from '@/app/components/layout/footer';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
 import { useSolverStats } from '@/app/hooks/use-solvers';
 import { SolverList } from './components/solver-list';
-import { getAllSolverMetadata } from '@/app/lib/solver-metadata';
 import { Users, UserCheck, Coins, Loader2 } from 'lucide-react';
-import { useEffect } from 'react';
 
 function NetworkStats() {
   const { stats, isLoading } = useSolverStats();
@@ -46,13 +44,6 @@ function NetworkStats() {
 
 export default function SolversPage() {
   const { walletAddress } = useWalletContext();
-
-  // Debug: Log stored metadata on page load
-  useEffect(() => {
-    const metadata = getAllSolverMetadata();
-    console.log('[Debug] All stored solver metadata:', metadata);
-    console.log('[Debug] Your wallet address:', walletAddress);
-  }, [walletAddress]);
 
   return (
     <div className="h-screen flex flex-col bg-background">
