@@ -181,11 +181,16 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
       // Step 3: Register on-chain
       setStep('registering');
       const stakeAmount = BigInt(Math.floor(parseFloat(formData.stake) * 1e8));
+      const metadataUri = metadata.metadataUri || metadataResult.url || '';
+
+      if (!metadataUri) {
+        throw new Error('Metadata URI not available');
+      }
 
       if (isPrivy && signRawHash && publicKeyHex) {
-        await registerSolver(walletAddress, stakeAmount, signRawHash, publicKeyHex);
+        await registerSolver(walletAddress, stakeAmount, metadataUri, signRawHash, publicKeyHex);
       } else if (signTransaction && signAndSubmitTransaction) {
-        await registerSolverNative(walletAddress, stakeAmount, signTransaction, signAndSubmitTransaction);
+        await registerSolverNative(walletAddress, stakeAmount, metadataUri, signTransaction, signAndSubmitTransaction);
       } else {
         throw new Error('No wallet connected');
       }
