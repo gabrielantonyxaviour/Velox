@@ -88,6 +88,12 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
         const eventData = getIntentEventData(intent.id);
         const localTxHash = getIntentTxHash(intent.id.toString());
 
+        console.log('[Velox] Enriching intent', intent.id.toString(), {
+          eventData: eventData ? { submitTx: eventData.submissionTxHash?.slice(0,10), fills: eventData.fillTxHashes.length } : null,
+          localTxHash: localTxHash?.slice(0, 10),
+          fillCount: intent.fills.length
+        });
+
         // Get submitTxHash: prefer localStorage, fallback to events
         const submitTxHash = localTxHash || eventData?.submissionTxHash || intent.submitTxHash;
 

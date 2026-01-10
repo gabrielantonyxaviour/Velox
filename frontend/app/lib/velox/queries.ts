@@ -453,6 +453,12 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
       fetchWithTimeout(filledQuery),
     ]);
 
+    console.log('[Velox] Event fetch results:', {
+      createdCount: createdRes?.data?.events?.length || 0,
+      filledCount: filledRes?.data?.events?.length || 0,
+      intentIds: intentIds.map(id => id.toString()),
+    });
+
     // Process IntentCreated events
     const createdEvents = createdRes?.data?.events || [];
     for (const event of createdEvents) {
@@ -486,10 +492,19 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
             inputAmount: BigInt(String(data.input_amount || '0')),
             outputAmount: BigInt(String(data.output_amount || '0')),
           });
+          console.log('[Velox] Cached fill event for intent', intentId, ':', txVersion);
         }
         eventCache.set(intentId, existing);
       }
     }
+
+    console.log('[Velox] Event cache after processing:',
+      Array.from(eventCache.entries()).map(([k, v]) => ({
+        intentId: k,
+        submitTx: v.submissionTxHash?.slice(0, 10),
+        fills: v.fillTxHashes.length
+      }))
+    );
   } catch (error) {
     console.warn('[Velox] Event fetching from indexer failed:', error);
   }
