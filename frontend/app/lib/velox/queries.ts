@@ -404,31 +404,11 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
   if (intentIds.length === 0) return;
 
   try {
-    // Query IntentCreated events from indexer
-    const createdQuery = `{
-      events(
-        where: {
-          type: {_eq: "${VELOX_ADDRESS}::submission::IntentCreated"}
-        },
-        limit: 100
-      ) {
-        transaction_version
-        data
-      }
-    }`;
+    // Query IntentCreated events from indexer using _like for flexible matching
+    const createdQuery = `{ events(where: {type: {_like: "%${VELOX_ADDRESS}%IntentCreated%"}}, limit: 100) { transaction_version data } }`;
 
-    // Query IntentFilled events from indexer
-    const filledQuery = `{
-      events(
-        where: {
-          type: {_eq: "${VELOX_ADDRESS}::settlement::IntentFilled"}
-        },
-        limit: 100
-      ) {
-        transaction_version
-        data
-      }
-    }`;
+    // Query IntentFilled events from indexer using _like for flexible matching
+    const filledQuery = `{ events(where: {type: {_like: "%${VELOX_ADDRESS}%IntentFilled%"}}, limit: 100) { transaction_version data } }`;
 
     const fetchWithTimeout = async (query: string) => {
       const controller = new AbortController();
