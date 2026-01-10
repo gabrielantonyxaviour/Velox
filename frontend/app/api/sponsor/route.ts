@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
     // Log whether key is configured (without exposing the actual key)
     const keyExists = !!process.env.SHINAMI_KEY;
     const keyLength = process.env.SHINAMI_KEY?.length || 0;
-    console.log('[Sponsor API] SHINAMI_KEY exists:', keyExists, 'length:', keyLength);
+    const keyPrefix = process.env.SHINAMI_KEY?.substring(0, 8) || 'none';
+    console.log('[Sponsor API] SHINAMI_KEY exists:', keyExists, 'length:', keyLength, 'prefix:', keyPrefix);
 
     const client = getGasClient();
 
@@ -63,12 +64,26 @@ export async function POST(request: NextRequest) {
     );
 
     console.log('[Sponsor API] Calling Shinami SDK sponsorAndSubmitSignedTransaction...');
+    console.log('[Sponsor API] Transaction rawTransaction exists:', !!simpleTx.rawTransaction);
+    console.log('[Sponsor API] SenderAuth type:', senderAuth.constructor.name);
 
     // Use Shinami SDK - returns PendingTransactionResponse directly
-    const pendingTransaction = await client.sponsorAndSubmitSignedTransaction(
-      simpleTx,
-      senderAuth
-    );
+    let pendingTransaction;
+    try {
+      pendingTransaction = await client.sponsorAndSubmitSignedTransaction(
+        simpleTx,
+        senderAuth
+      );
+      console.log('[Sponsor API] Raw Shinami response:', JSON.stringify(pendingTransaction, null, 2));
+    } catch (shinamiError) {
+      console.error('[Sponsor API] Shinami SDK threw:', shinamiError);
+      console.error('[Sponsor API] Shinami error type:', typeof shinamiError);
+      if (shinamiError && typeof shinamiError === 'object') {
+        console.error('[Sponsor API] Shinami error keys:', Object.keys(shinamiError));
+        console.error('[Sponsor API] Shinami error stringified:', JSON.stringify(shinamiError, null, 2));
+      }
+      throw shinamiError;
+    }
 
     console.log('[Sponsor API] Success! Hash:', pendingTransaction.hash);
 
