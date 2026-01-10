@@ -166,12 +166,15 @@ export class VeloxSolver extends EventEmitter {
 
       if (!stats.isRegistered) {
         console.error('❌ Solver is NOT registered!');
-        console.error('\nTo register, you must:');
-        console.error('1. Call solver_registry::register_solver');
-        console.error('2. Call solver_registry::add_stake with at least minimum stake amount');
+        console.error('\nTo register with stake in one transaction, call:');
+        console.error('  movement move run --function-id <VELOX>::solver_registry::register_and_stake \\');
+        console.error('    --args string:"<metadata_uri>" u64:<stake_amount>');
+        console.error('\nWhere:');
+        console.error('  <metadata_uri>  = URL or IPFS hash describing your solver');
+        console.error('  <stake_amount>  = Minimum 100000000 Octas (1 MOVE)');
         console.error('\nExample:');
-        console.error('  movement move run --function-id <VELOX>::solver_registry::register_solver');
-        console.error('  movement move run --function-id <VELOX>::solver_registry::add_stake --args <AMOUNT>');
+        console.error('  movement move run --function-id <VELOX>::solver_registry::register_and_stake \\');
+        console.error('    --args string:"https://example.com/solver-profile" u64:1000000000');
         throw new Error('Solver not registered');
       }
 
