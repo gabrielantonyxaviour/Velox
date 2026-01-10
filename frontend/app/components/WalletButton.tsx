@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
@@ -10,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { Avatar, AvatarImage, AvatarFallback } from './ui/avatar';
-import { Copy, ExternalLink, LogOut, Check, Loader2, Droplets } from 'lucide-react';
+import { Copy, ExternalLink, LogOut, Check, Loader2, Droplets, Bot } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { useMoveBalance } from '../hooks/use-move-balance';
@@ -21,6 +22,7 @@ interface WalletButtonProps {
 }
 
 export function WalletButton({ address }: WalletButtonProps) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [faucetOpen, setFaucetOpen] = useState(false);
   const { logout: privyLogout, authenticated } = usePrivy();
@@ -105,6 +107,11 @@ export function WalletButton({ address }: WalletButtonProps) {
         <DropdownMenuItem onClick={() => setFaucetOpen(true)} className="gap-2 cursor-pointer">
           <Droplets className="h-4 w-4" />
           <span>Faucet</span>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem onClick={() => router.push('/solvers/me')} className="gap-2 cursor-pointer">
+          <Bot className="h-4 w-4" />
+          <span>My Solver</span>
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
