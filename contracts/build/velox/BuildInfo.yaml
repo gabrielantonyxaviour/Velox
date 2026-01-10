@@ -9,10 +9,10 @@ compiled_package_info:
     aptos_token: "0000000000000000000000000000000000000000000000000000000000000003"
     core_resources: 000000000000000000000000000000000000000000000000000000000a550c18
     std: "0000000000000000000000000000000000000000000000000000000000000001"
-    velox: 34ca2941f249796ce72ac2c0fc2ccb816936f53cd8aea7ef82bf621735634511
+    velox: 951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7
     vm: "0000000000000000000000000000000000000000000000000000000000000000"
     vm_reserved: "0000000000000000000000000000000000000000000000000000000000000000"
-  source_digest: F2D545F7F97DF81719FCE3C7F86470E9076F20B5B497322A5130B86624FD5E66
+  source_digest: 1C4CDB136B64C4D05820854272E528219D6AFC47FD4F0B6F59AD3C1DBE0BF844
   build_flags:
     dev_mode: false
     test_mode: false
@@ -25,7 +25,7 @@ compiled_package_info:
     force_recompilation: false
     additional_named_addresses: {}
     fetch_deps_only: false
-    skip_fetch_latest_git_deps: true
+    skip_fetch_latest_git_deps: false
     compiler_config:
       bytecode_version: 7
       known_attributes:

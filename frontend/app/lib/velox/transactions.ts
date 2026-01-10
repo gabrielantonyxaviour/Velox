@@ -7,7 +7,7 @@ import {
   SimpleTransaction,
 } from '@aptos-labs/ts-sdk';
 import { aptos, VELOX_ADDRESS, toHex } from '../aptos';
-import { sponsoredSubmit, sponsoredSubmitNative, isSponsorshipEnabled } from '../shinami';
+import { sponsoredSubmit, sponsoredSubmitNative, isSponsorshipEnabled, TransactionSubmittedError } from '../shinami';
 import { storeAuctionIntent } from './auction-storage';
 
 // ============================================================
@@ -128,16 +128,18 @@ async function smartSubmitWithPrivy(
   signRawHash: SignRawHashFunction
 ): Promise<string> {
   const sponsorshipAvailable = await isSponsorshipEnabled();
+  console.log('[Velox] smartSubmitWithPrivy called, sponsorship available:', sponsorshipAvailable);
+
   if (sponsorshipAvailable) {
-    try {
-      console.log('[Velox] Using Shinami Gas Station for sponsored transaction (Privy)');
-      return await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
-    } catch (error) {
-      console.warn('[Velox] Sponsored submission failed, falling back to user-paid:', error);
-    }
+    console.log('[Velox] Attempting Shinami Gas Station sponsored transaction (Privy)');
+    // IMPORTANT: Do NOT catch errors here - let them propagate
+    // This ensures we never fall back to user-paid after Shinami submission
+    const hash = await sponsoredSubmit(walletAddress, functionId, args, publicKeyHex, signRawHash);
+    console.log('[Velox] Sponsored transaction SUCCESS, hash:', hash);
+    return hash;
   }
 
-  console.log('[Velox] Using user-paid gas transaction (Privy)');
+  console.log('[Velox] Sponsorship not available, using user-paid gas transaction (Privy)');
   return signAndSubmitWithPrivy(walletAddress, functionId, args, publicKeyHex, signRawHash);
 }
 
@@ -149,16 +151,18 @@ async function smartSubmitNative(
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
   const sponsorshipAvailable = await isSponsorshipEnabled();
+  console.log('[Velox] smartSubmitNative called, sponsorship available:', sponsorshipAvailable);
+
   if (sponsorshipAvailable) {
-    try {
-      console.log('[Velox] Using Shinami Gas Station for sponsored transaction (Native)');
-      return await sponsoredSubmitNative(walletAddress, functionId, args, signTransaction);
-    } catch (error) {
-      console.warn('[Velox] Sponsored submission failed, falling back to user-paid:', error);
-    }
+    console.log('[Velox] Attempting Shinami Gas Station sponsored transaction (Native)');
+    // IMPORTANT: Do NOT catch errors here - let them propagate
+    // This ensures we never fall back to user-paid after Shinami submission
+    const hash = await sponsoredSubmitNative(walletAddress, functionId, args, signTransaction);
+    console.log('[Velox] Sponsored transaction SUCCESS, hash:', hash);
+    return hash;
   }
 
-  console.log('[Velox] Using user-paid gas transaction (Native)');
+  console.log('[Velox] Sponsorship not available, using user-paid gas transaction (Native)');
   return signAndSubmitNative(walletAddress, functionId, args, signAndSubmitTransaction);
 }
 
