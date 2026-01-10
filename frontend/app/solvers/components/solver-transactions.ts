@@ -136,13 +136,14 @@ async function smartSubmitNative(
 export async function registerSolver(
   walletAddress: string,
   stake: bigint,
+  metadataUri: string,
   signRawHash: SignRawHashFunction,
   publicKeyHex: string
 ): Promise<string> {
   return smartSubmitWithPrivy(
     walletAddress,
     `${VELOX_ADDRESS}::solver_registry::register_and_stake`,
-    [VELOX_ADDRESS, stake.toString()],
+    [VELOX_ADDRESS, metadataUri, stake.toString()],
     publicKeyHex,
     signRawHash
   );
@@ -151,13 +152,14 @@ export async function registerSolver(
 export async function registerSolverNative(
   walletAddress: string,
   stake: bigint,
+  metadataUri: string,
   signTransaction: SignTransactionFunction,
   signAndSubmitTransaction: (payload: unknown) => Promise<{ hash: string }>
 ): Promise<string> {
   return smartSubmitNative(
     walletAddress,
     `${VELOX_ADDRESS}::solver_registry::register_and_stake`,
-    [VELOX_ADDRESS, stake.toString()],
+    [VELOX_ADDRESS, metadataUri, stake.toString()],
     signTransaction,
     signAndSubmitTransaction
   );
