@@ -3,7 +3,7 @@ name = "velox"
 version = "1.0.0"
 
 [addresses]
-velox = "0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7"
+velox = "0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb"
 
 # [dev-addresses]
 # velox = "0xbeef"

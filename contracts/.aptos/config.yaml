@@ -1,8 +1,9 @@
 ---
 profiles:
   default:
-    network: Custom
-    private_key: ed25519-priv-0xd3b0422d8cd7d5360df08214ced597ec72ab91fee52b6cdfe5f5cddcb28ab9fa
-    public_key: ed25519-pub-0x960f0e07ebd60946bf17d584dd411c9cb0b90b0028f6b645505aa2eca17c04c0
-    account: 951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7
+    network: Testnet
+    private_key: ed25519-priv-0x6c98e2e1910c3c8dcaef5d7ccb57faccd15728d76eea270fbbe72e7512f7fb55
+    public_key: ed25519-pub-0x7b709e848b08f6e2186f4898561b43c7d9a51dece2a23da1ca7c5109928c057a
+    account: 44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb
     rest_url: "https://testnet.movementnetwork.xyz/v1"
+    faucet_url: "https://faucet.testnet.movementnetwork.xyz"
