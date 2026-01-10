@@ -101,13 +101,16 @@ export default function SolverDetailPage() {
   }, [address]);
 
   const copyAddress = () => {
-    navigator.clipboard.writeText(address);
+    if (metadata?.operatorWallet) {
+      navigator.clipboard.writeText(metadata.operatorWallet);
+    }
   };
 
   const openExplorer = () => {
+    if (!metadata?.operatorWallet) return;
     const network = MOVEMENT_CONFIGS[CURRENT_NETWORK].explorer;
     window.open(
-      `https://explorer.movementnetwork.xyz/account/${address}?network=${network}`,
+      `https://explorer.movementnetwork.xyz/account/${metadata.operatorWallet}?network=${network}`,
       '_blank'
     );
   };
@@ -165,9 +168,14 @@ export default function SolverDetailPage() {
                 <h1 className="text-4xl font-bold">{metadata.name}</h1>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="font-mono text-sm text-muted-foreground">
-                    {address.slice(0, 12)}...{address.slice(-10)}
+                    {metadata.operatorWallet.slice(0, 12)}...{metadata.operatorWallet.slice(-10)}
                   </span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyAddress}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => navigator.clipboard.writeText(metadata.operatorWallet)}
+                  >
                     <Copy className="w-3 h-3" />
                   </Button>
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openExplorer}>
