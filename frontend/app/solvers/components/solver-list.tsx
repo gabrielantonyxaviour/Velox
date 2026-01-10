@@ -70,23 +70,23 @@ function SolverRow({ solver }: { solver: SolverListItem }) {
           </div>
         </div>
 
-        {/* Name & Address */}
-        <div className="flex-1 min-w-0">
+        {/* Name & Address - Main Info */}
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
           {solver.name ? (
             <>
-              <p className="font-semibold text-sm truncate">{solver.name}</p>
-              <p className="font-mono text-xs text-muted-foreground truncate">
+              <p className="font-bold text-sm truncate text-foreground">{solver.name}</p>
+              <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">
                 {solver.address.slice(0, 10)}...{solver.address.slice(-8)}
               </p>
             </>
           ) : (
-            <p className="font-mono text-sm truncate">
+            <p className="font-mono text-sm truncate text-foreground">
               {solver.address.slice(0, 10)}...{solver.address.slice(-8)}
             </p>
           )}
-          <div className="flex items-center gap-2 mt-1">
-            <Progress value={Math.min(solver.reputationScore / 100, 100)} className="h-1.5 w-20" />
-            <span className="text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 mt-2">
+            <Progress value={Math.min(solver.reputationScore / 100, 100)} className="h-2 w-24" />
+            <span className="text-xs text-muted-foreground font-semibold">
               {Math.min((solver.reputationScore / 100).toFixed(0), 100)}%
             </span>
           </div>
