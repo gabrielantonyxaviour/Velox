@@ -57,10 +57,7 @@ export function storeSolverMetadata(
  */
 export function getSolverMetadata(registrationWallet: string): SolverMetadata | null {
   const storage = getStorage();
-  const key = registrationWallet.toLowerCase();
-  const metadata = storage[key] || null;
-  console.log(`[Metadata] Getting metadata for ${key}:`, metadata ? { name: metadata.name, hasImage: !!metadata.imageUrl } : 'not found');
-  return metadata;
+  return storage[registrationWallet.toLowerCase()] || null;
 }
 
 /**

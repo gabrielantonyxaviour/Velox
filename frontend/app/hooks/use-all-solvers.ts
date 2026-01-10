@@ -84,21 +84,14 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
     // Fetch metadata from localStorage
     let metadata = getSolverMetadata(address);
 
-    // If not found by address, check all stored metadata and use the first/most recent one
+    // If not found by address, check all stored metadata and use the most recent one
     if (!metadata) {
       const allMetadata = getAllSolverMetadata();
       const metadataArray = Object.values(allMetadata);
       if (metadataArray.length > 0) {
         // Use the most recently created metadata (assumes only one solver registered per browser)
         metadata = metadataArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
-        console.log(`[Solvers] Found metadata by fallback for ${address}:`, metadata?.name);
       }
-    }
-
-    if (metadata) {
-      console.log(`[Solvers] Found metadata for ${address}:`, metadata.name);
-    } else {
-      console.log(`[Solvers] No metadata found for ${address}`);
     }
 
     return {
@@ -133,7 +126,6 @@ export function useAllSolvers() {
 
     try {
       const addresses = await fetchSolverAddresses();
-      console.log('[Solvers] Fetched addresses from contract:', addresses);
 
       if (addresses.length === 0) {
         setSolvers([]);
@@ -144,7 +136,6 @@ export function useAllSolvers() {
       const results = await Promise.all(solverPromises);
 
       const validSolvers = results.filter((s): s is SolverListItem => s !== null);
-      console.log('[Solvers] Valid solvers with metadata:', validSolvers);
 
       // Sort by reputation score descending
       validSolvers.sort((a, b) => b.reputationScore - a.reputationScore);
