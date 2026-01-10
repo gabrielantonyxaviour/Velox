@@ -583,17 +583,17 @@ export class VeloxSolver extends EventEmitter {
     const rawIntent = data.intent as Record<string, unknown>;
     const intent = this.parseIntent(rawIntent);
 
-    // Parse auction state
-    const rawAuction = data.auction as Record<string, unknown>;
-    const auction = this.parseAuctionState(rawAuction);
+    // Parse auction state - use empty auction if not present
+    const rawAuction = data.auction as Record<string, unknown> | undefined;
+    const auction = rawAuction ? this.parseAuctionState(rawAuction) : { type: AuctionType.NONE };
 
-    // Parse status
+    // Parse status - default to ACTIVE if not present
     const rawStatus = data.status as { type?: string } | undefined;
     const status = rawStatus?.type
       ? parseIntentStatus(rawStatus as { type: string })
       : IntentStatus.ACTIVE;
 
-    // Parse fills
+    // Parse fills - default to empty array if not present
     const rawFills = (data.fills as unknown[]) || [];
     const fills: Fill[] = rawFills.map((f) => {
       const fill = f as Record<string, unknown>;
@@ -605,6 +605,10 @@ export class VeloxSolver extends EventEmitter {
       };
     });
 
+    // Use escrowed_amount as escrow_remaining fallback
+    const escrowRemaining = data.escrow_remaining || data.escrowed_amount;
+    const totalOutputReceived = data.total_output_received || data.filled_amount || '0';
+
     return {
       id: Number(data.id || 0),
       user: String(data.user || ''),
@@ -612,8 +616,8 @@ export class VeloxSolver extends EventEmitter {
       intent,
       auction,
       status,
-      escrowRemaining: BigInt(String(data.escrow_remaining || '0')),
-      totalOutputReceived: BigInt(String(data.total_output_received || '0')),
+      escrowRemaining: BigInt(String(escrowRemaining || '0')),
+      totalOutputReceived: BigInt(String(totalOutputReceived || '0')),
       fills,
       chunksExecuted: Number(data.chunks_executed || 0),
       nextExecution: Number(data.next_execution || 0),
@@ -622,7 +626,7 @@ export class VeloxSolver extends EventEmitter {
 
   private parseIntent(raw: Record<string, unknown>): Intent {
     // Handle Move 2.0 enum variant pattern
-    const variant = raw.__variant__ || raw.type;
+    const variant = raw.__variant__ || raw.type || (raw as any).variant;
     let type = IntentType.SWAP;
 
     if (typeof variant === 'string') {

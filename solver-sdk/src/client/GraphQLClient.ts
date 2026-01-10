@@ -1,8 +1,27 @@
 import { GraphQLClient as GQLClient, gql } from 'graphql-request';
-import { Intent, IntentType, IntentStatus, RawIntentData } from '../types/intent';
+import { Intent, IntentType } from '../types/intent';
 
 export interface GraphQLClientConfig {
   url: string;
+}
+
+interface GraphQLIntent {
+  id: string;
+  type: string;
+  user: string;
+  inputToken: string;
+  outputToken: string;
+  amountIn?: string;
+  minAmountOut?: string;
+  deadline: string;
+  limitPrice?: string;
+  numChunks?: string;
+  intervalSeconds?: string;
+  amountPerPeriod?: string;
+  totalPeriods?: string;
+  totalAmount?: string;
+  maxSlippageBps?: string;
+  startTime?: string;
 }
 
 export class VeloxGraphQLClient {
@@ -15,35 +34,29 @@ export class VeloxGraphQLClient {
   async getPendingIntents(): Promise<Intent[]> {
     const query = gql`
       query GetPendingIntents {
-        intents(where: { status: "PENDING" }, orderBy: "createdAt", orderDirection: "desc") {
+        intents(where: { status: "ACTIVE" }, orderBy: "createdAt", orderDirection: "desc") {
           id
           type
           user
-          inputToken {
-            address
-            symbol
-            decimals
-          }
-          outputToken {
-            address
-            symbol
-            decimals
-          }
-          inputAmount
-          minOutputAmount
+          inputToken
+          outputToken
+          amountIn
+          minAmountOut
           deadline
-          status
-          createdAt
           limitPrice
-          partialFillAllowed
           numChunks
-          interval
+          intervalSeconds
+          amountPerPeriod
+          totalPeriods
+          totalAmount
+          maxSlippageBps
+          startTime
         }
       }
     `;
 
-    const result = await this.client.request<{ intents: RawIntentData[] }>(query);
-    return result.intents.map(this.parseIntent);
+    const result = await this.client.request<{ intents: GraphQLIntent[] }>(query);
+    return result.intents.map((raw) => this.parseIntent(raw));
   }
 
   async getIntentById(id: string): Promise<Intent | null> {
@@ -53,30 +66,24 @@ export class VeloxGraphQLClient {
           id
           type
           user
-          inputToken {
-            address
-            symbol
-            decimals
-          }
-          outputToken {
-            address
-            symbol
-            decimals
-          }
-          inputAmount
-          minOutputAmount
+          inputToken
+          outputToken
+          amountIn
+          minAmountOut
           deadline
-          status
-          createdAt
           limitPrice
-          partialFillAllowed
           numChunks
-          interval
+          intervalSeconds
+          amountPerPeriod
+          totalPeriods
+          totalAmount
+          maxSlippageBps
+          startTime
         }
       }
     `;
 
-    const result = await this.client.request<{ intent: RawIntentData | null }>(query, { id });
+    const result = await this.client.request<{ intent: GraphQLIntent | null }>(query, { id });
     return result.intent ? this.parseIntent(result.intent) : null;
   }
 
@@ -87,45 +94,61 @@ export class VeloxGraphQLClient {
           id
           type
           user
-          inputToken {
-            address
-            symbol
-            decimals
-          }
-          outputToken {
-            address
-            symbol
-            decimals
-          }
-          inputAmount
-          minOutputAmount
+          inputToken
+          outputToken
+          amountIn
+          minAmountOut
           deadline
-          status
-          createdAt
+          limitPrice
+          numChunks
+          intervalSeconds
+          amountPerPeriod
+          totalPeriods
+          totalAmount
+          maxSlippageBps
+          startTime
         }
       }
     `;
 
-    const result = await this.client.request<{ intents: RawIntentData[] }>(query, { user });
-    return result.intents.map(this.parseIntent);
+    const result = await this.client.request<{ intents: GraphQLIntent[] }>(query, { user });
+    return result.intents.map((raw) => this.parseIntent(raw));
   }
 
-  private parseIntent(raw: RawIntentData): Intent {
-    return {
-      id: raw.id,
-      type: raw.type as unknown as IntentType,
-      user: raw.user,
-      inputToken: { address: raw.input_coin, symbol: '', decimals: 8 },
-      outputToken: { address: raw.output_coin, symbol: '', decimals: 8 },
-      inputAmount: BigInt(raw.amount_in),
-      minOutputAmount: raw.min_amount_out ? BigInt(raw.min_amount_out) : undefined,
-      deadline: new Date(parseInt(raw.deadline) * 1000),
-      status: raw.status as unknown as IntentStatus,
-      createdAt: new Date(parseInt(raw.created_at) * 1000),
-      limitPrice: raw.limit_price ? BigInt(raw.limit_price) : undefined,
-      partialFillAllowed: raw.partial_fill,
-      numChunks: raw.num_chunks ? parseInt(raw.num_chunks) : undefined,
-      interval: raw.interval ? parseInt(raw.interval) : undefined,
+  private parseIntent(raw: GraphQLIntent): Intent {
+    const intent: Intent = {
+      type: this.parseIntentType(raw.type),
+      inputToken: raw.inputToken,
+      outputToken: raw.outputToken,
     };
+
+    // Swap fields
+    if (raw.amountIn) intent.amountIn = BigInt(raw.amountIn);
+    if (raw.minAmountOut) intent.minAmountOut = BigInt(raw.minAmountOut);
+    if (raw.deadline) intent.deadline = parseInt(raw.deadline);
+
+    // LimitOrder fields
+    if (raw.limitPrice) intent.limitPrice = BigInt(raw.limitPrice);
+
+    // TWAP fields
+    if (raw.totalAmount) intent.totalAmount = BigInt(raw.totalAmount);
+    if (raw.numChunks) intent.numChunks = parseInt(raw.numChunks);
+    if (raw.intervalSeconds) intent.intervalSeconds = parseInt(raw.intervalSeconds);
+    if (raw.maxSlippageBps) intent.maxSlippageBps = parseInt(raw.maxSlippageBps);
+    if (raw.startTime) intent.startTime = parseInt(raw.startTime);
+
+    // DCA fields
+    if (raw.amountPerPeriod) intent.amountPerPeriod = BigInt(raw.amountPerPeriod);
+    if (raw.totalPeriods) intent.totalPeriods = parseInt(raw.totalPeriods);
+
+    return intent;
+  }
+
+  private parseIntentType(type: string): IntentType {
+    if (type.includes('Swap')) return IntentType.SWAP;
+    if (type.includes('LimitOrder')) return IntentType.LIMIT_ORDER;
+    if (type.includes('TWAP')) return IntentType.TWAP;
+    if (type.includes('DCA')) return IntentType.DCA;
+    return IntentType.SWAP;
   }
 }
