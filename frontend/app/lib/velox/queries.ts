@@ -413,8 +413,8 @@ export async function fetchIntentEvents(intentIds: bigint[], userAddress?: strin
           method: 'GET',
           signal: controller.signal,
         });
-        const result = await res.json();
-        return result.data || { data: { events: [] } };
+        // API now returns GraphQL response directly: { data: { events: [...] } }
+        return await res.json();
       } catch {
         return { data: { events: [] } };
       } finally {
