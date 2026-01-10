@@ -5,13 +5,41 @@ import { printVeloxLogo, printSection, printKeyValue, printSuccess, printLoading
 
 async function main() {
   const shinamiNodeKey = process.env.SHINAMI_KEY;
+  const solverPrivateKey = process.env.SOLVER_PRIVATE_KEY;
+  const registeredSolverAddress = process.env.REGISTERED_SOLVER_ADDRESS;
 
   // Beautiful startup banner
   printVeloxLogo();
   printSection('🚀 VELOX BASIC SOLVER');
   console.log('');
+
+  // Validate configuration before proceeding
+  if (!solverPrivateKey) {
+    printSection('❌ CONFIGURATION ERROR');
+    console.log('');
+    console.log('  Missing required environment variable: SOLVER_PRIVATE_KEY');
+    console.log('');
+    console.log('  Required Configuration:');
+    console.log('  ├─ SOLVER_PRIVATE_KEY       (operator wallet private key - REQUIRED)');
+    console.log('  ├─ REGISTERED_SOLVER_ADDRESS (on-chain solver address - OPTIONAL)');
+    console.log('  ├─ RPC_URL                   (defaults to testnet)');
+    console.log('  └─ VELOX_ADDRESS             (defaults to deployed address)');
+    console.log('');
+    console.log('  Setup:');
+    console.log('  1. Copy .env.example to .env:');
+    console.log('     cp .env.example .env');
+    console.log('');
+    console.log('  2. Edit .env and add your configuration:');
+    console.log('     SOLVER_PRIVATE_KEY=0x...');
+    console.log('     REGISTERED_SOLVER_ADDRESS=0x...');
+    console.log('');
+    process.exit(1);
+  }
+
+  // Display configuration status
   printKeyValue('⏱️  Polling Interval', '10,000ms (10 seconds)');
   printKeyValue(`${shinamiNodeKey ? '✅' : '⏭️ '} Shinami Node Service`, shinamiNodeKey ? 'CONFIGURED' : 'DISABLED');
+  printKeyValue(`${registeredSolverAddress ? '✅' : '⏭️ '} Registered Solver Address`, registeredSolverAddress ? 'CONFIGURED' : 'WILL USE OPERATOR ADDRESS');
   printKeyValue('⏭️  Skip Existing Intents', 'ENABLED');
   console.log('');
 
