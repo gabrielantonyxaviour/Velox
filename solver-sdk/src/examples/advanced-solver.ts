@@ -143,7 +143,7 @@ async function main() {
     rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
     veloxAddress:
       process.env.VELOX_ADDRESS ||
-      '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7',
+      '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb',
     privateKey: process.env.SOLVER_PRIVATE_KEY || '',
     minProfitBps: parseInt(process.env.MIN_PROFIT_BPS || '10'),
     maxConcurrentIntents: parseInt(process.env.MAX_CONCURRENT || '5'),
