@@ -45,6 +45,7 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
 
       if (intentIds.length === 0) {
         setIntents([]);
+        setLoading(false);
         return;
       }
 
@@ -57,8 +58,15 @@ export function useUserIntents(userAddress: string | null): UseUserIntentsResult
         .filter((intent): intent is IntentRecord => intent !== null)
         .sort((a, b) => b.createdAt - a.createdAt);
 
-      // Step 4: Fetch events for all intents (for tx hashes)
-      await fetchIntentEvents(intentIds, userAddress);
+      // Step 4: Fetch events for all intents (for tx hashes) with timeout
+      try {
+        await Promise.race([
+          fetchIntentEvents(intentIds, userAddress),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Event fetch timeout')), 5000))
+        ]);
+      } catch (err) {
+        console.warn('[Velox] Event fetching failed or timed out:', err);
+      }
 
       // Step 5: Check for pending tx hash and associate with newest intent
       const currentMaxId = validIntents.length > 0
