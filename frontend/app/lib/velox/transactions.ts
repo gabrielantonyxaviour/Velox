@@ -92,7 +92,9 @@ async function signAndSubmitWithPrivy(
 
   const executed = await aptos.waitForTransaction({ transactionHash: committedTx.hash });
   if (!executed.success) {
-    throw new Error('Transaction failed');
+    // Extract error details from transaction failure
+    const errorMsg = (executed as any).vm_status || 'Transaction execution failed on-chain';
+    throw new Error(`Transaction failed: ${errorMsg}`);
   }
 
   return committedTx.hash;
@@ -114,7 +116,9 @@ async function signAndSubmitNative(
 
   const executed = await aptos.waitForTransaction({ transactionHash: response.hash });
   if (!executed.success) {
-    throw new Error('Transaction failed');
+    // Extract error details from transaction failure
+    const errorMsg = (executed as any).vm_status || 'Transaction execution failed on-chain';
+    throw new Error(`Transaction failed: ${errorMsg}`);
   }
 
   return response.hash;

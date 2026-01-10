@@ -221,7 +221,13 @@ export function SwapForm({ onSuccess, onError }: SwapFormProps) {
       onSuccess?.(txHash);
     } catch (err: any) {
       console.error('[SwapForm] Transaction error:', err);
-      const errorMsg = err.message || 'Transaction failed';
+      console.error('[SwapForm] Full error details:', {
+        message: err.message,
+        code: err.code,
+        data: err.data,
+        vm_status: (err as any).vm_status,
+      });
+      const errorMsg = err.message || 'Transaction failed - please check the explorer for details';
       setError(errorMsg);
       onError?.(errorMsg);
     } finally {
