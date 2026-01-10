@@ -17,6 +17,7 @@ import {
   type SolverMetadata,
 } from '@/app/lib/solver-metadata';
 import { decodeVeloxError } from '@/app/lib/velox/error-decoder';
+import { showTxSuccess, showError } from '@/app/lib/toast';
 import {
   Loader2,
   UserPlus,
@@ -188,16 +189,20 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
         throw new Error('Metadata URI not available');
       }
 
+      let txHash: string;
       if (isPrivy && signRawHash && publicKeyHex) {
-        await registerSolver(walletAddress, stakeAmount, metadataUri, signRawHash, publicKeyHex);
+        txHash = await registerSolver(walletAddress, stakeAmount, metadataUri, signRawHash, publicKeyHex);
       } else if (signTransaction && signAndSubmitTransaction) {
-        await registerSolverNative(walletAddress, stakeAmount, metadataUri, signTransaction, signAndSubmitTransaction);
+        txHash = await registerSolverNative(walletAddress, stakeAmount, metadataUri, signTransaction, signAndSubmitTransaction);
       } else {
         throw new Error('No wallet connected');
       }
 
       // Step 4: Store metadata locally
       storeSolverMetadata(walletAddress, metadata);
+
+      // Step 5: Show success notification with transaction link
+      showTxSuccess('Solver registered successfully!', txHash);
 
       setSuccess(true);
       setStep('form');
@@ -208,6 +213,7 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
       const decodedError = decodeVeloxError(errorMsg);
       setError(decodedError);
       setStep('form');
+      showError('Registration failed', decodedError);
       console.error('[RegisterSolver] Error:', errorMsg, 'Decoded:', decodedError);
     } finally {
       setIsLoading(false);
