@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { aptos, VELOX_ADDRESS, MOVEMENT_CONFIGS, CURRENT_NETWORK } from '@/app/lib/aptos';
+import { getSolverMetadata, type SolverMetadata } from '@/app/lib/solver-metadata';
 
 export interface SolverListItem {
   address: string;
@@ -12,6 +13,9 @@ export interface SolverListItem {
   totalVolume: bigint;
   averageSlippage: number;
   registeredAt: number;
+  name?: string;
+  imageUrl?: string;
+  description?: string;
 }
 
 interface SolverRegisteredEvent {
@@ -63,7 +67,7 @@ async function fetchSolverAddresses(): Promise<string[]> {
 }
 
 /**
- * Fetch solver stats from contract
+ * Fetch solver stats from contract and merge with metadata
  */
 async function fetchSolverStats(address: string): Promise<SolverListItem | null> {
   try {
@@ -87,6 +91,9 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
 
     const [stake, totalVolume, reputationScore, successfulFills, failedFills, avgSlippage, isActive] = result;
 
+    // Fetch metadata from localStorage
+    const metadata = getSolverMetadata(address);
+
     return {
       address,
       stake: BigInt(stake as string),
@@ -98,6 +105,9 @@ async function fetchSolverStats(address: string): Promise<SolverListItem | null>
       totalVolume: BigInt(totalVolume as string),
       averageSlippage: Number(avgSlippage),
       registeredAt: 0,
+      name: metadata?.name,
+      imageUrl: metadata?.imageUrl,
+      description: metadata?.description,
     };
   } catch (error) {
     console.error('Error fetching solver stats for', address, error);

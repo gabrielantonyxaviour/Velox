@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Card } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import { useAllSolvers, SolverListItem } from '@/app/hooks/use-all-solvers';
@@ -41,28 +42,52 @@ function SolverRow({ solver }: { solver: SolverListItem }) {
       className="flex items-center justify-between p-4 rounded-lg bg-muted/30 hover:bg-muted/50 cursor-pointer transition-colors group"
     >
       <div className="flex items-center gap-4 flex-1 min-w-0">
-        {/* Status Icon */}
-        <div className="flex-shrink-0">
-          {solver.isActive ? (
-            <div className="p-2 rounded-full bg-primary/10">
-              <CheckCircle className="w-5 h-5 text-primary" />
-            </div>
+        {/* Avatar & Status */}
+        <div className="flex-shrink-0 relative">
+          {solver.imageUrl ? (
+            <Image
+              src={solver.imageUrl}
+              alt={solver.name || 'Solver'}
+              width={40}
+              height={40}
+              className="rounded-full object-cover w-10 h-10"
+            />
           ) : (
-            <div className="p-2 rounded-full bg-destructive/10">
-              <XCircle className="w-5 h-5 text-destructive" />
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold">
+              {solver.name?.charAt(0).toUpperCase() || solver.address.slice(0, 2).toUpperCase()}
             </div>
           )}
+          <div className="absolute -bottom-1 -right-1">
+            {solver.isActive ? (
+              <div className="p-1 rounded-full bg-primary/10 border border-primary">
+                <CheckCircle className="w-3 h-3 text-primary" />
+              </div>
+            ) : (
+              <div className="p-1 rounded-full bg-destructive/10 border border-destructive">
+                <XCircle className="w-3 h-3 text-destructive" />
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Address & Reputation */}
+        {/* Name & Address */}
         <div className="flex-1 min-w-0">
-          <p className="font-mono text-sm truncate">
-            {solver.address.slice(0, 10)}...{solver.address.slice(-8)}
-          </p>
+          {solver.name ? (
+            <>
+              <p className="font-semibold text-sm truncate">{solver.name}</p>
+              <p className="font-mono text-xs text-muted-foreground truncate">
+                {solver.address.slice(0, 10)}...{solver.address.slice(-8)}
+              </p>
+            </>
+          ) : (
+            <p className="font-mono text-sm truncate">
+              {solver.address.slice(0, 10)}...{solver.address.slice(-8)}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-1">
-            <Progress value={solver.reputationScore / 100} className="h-1.5 w-20" />
+            <Progress value={Math.min(solver.reputationScore / 100, 100)} className="h-1.5 w-20" />
             <span className="text-xs text-muted-foreground">
-              {(solver.reputationScore / 100).toFixed(0)}%
+              {Math.min((solver.reputationScore / 100).toFixed(0), 100)}%
             </span>
           </div>
         </div>
@@ -104,7 +129,10 @@ export function SolverList() {
   const filteredSolvers = useMemo(() => {
     if (!searchQuery.trim()) return solvers;
     const query = searchQuery.toLowerCase();
-    return solvers.filter((s) => s.address.toLowerCase().includes(query));
+    return solvers.filter((s) =>
+      s.address.toLowerCase().includes(query) ||
+      s.name?.toLowerCase().includes(query)
+    );
   }, [solvers, searchQuery]);
 
   return (
@@ -114,7 +142,7 @@ export function SolverList() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search by solver address (0x...)"
+            placeholder="Search by solver name or address"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
