@@ -230,14 +230,21 @@ export function MySolverCard({ address, onRefresh }: MySolverCardProps) {
         </div>
       </div>
 
-      {/* Operator Wallet Info */}
-      {metadata?.operatorWallet && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4 bg-muted/30 rounded px-3 py-2">
+      {/* Registered Address & Operator Wallet Info */}
+      <div className="space-y-2 mb-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded px-3 py-2">
           <Wallet className="w-4 h-4" />
-          <span>Operator:</span>
-          <code className="text-xs">{truncateAddress(metadata.operatorWallet)}</code>
+          <span>Registered:</span>
+          <code className="text-xs">{truncateAddress(address)}</code>
         </div>
-      )}
+        {metadata?.operatorWallet && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded px-3 py-2">
+            <Wallet className="w-4 h-4" />
+            <span>Operator:</span>
+            <code className="text-xs">{truncateAddress(metadata.operatorWallet)}</code>
+          </div>
+        )}
+      </div>
 
       {/* Social Links */}
       {(metadata?.website || metadata?.twitter || metadata?.discord) && (

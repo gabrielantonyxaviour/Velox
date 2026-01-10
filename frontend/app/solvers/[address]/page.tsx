@@ -166,7 +166,16 @@ export default function SolverDetailPage() {
               {/* Profile Info */}
               <div className="flex-1">
                 <h1 className="text-4xl font-bold">{metadata.name}</h1>
+                {/* Registered Address */}
                 <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground font-semibold">Registered:</span>
+                  <span className="font-mono text-sm text-muted-foreground">
+                    {address.slice(0, 12)}...{address.slice(-10)}
+                  </span>
+                </div>
+                {/* Operator Wallet */}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-muted-foreground font-semibold">Operator:</span>
                   <span className="font-mono text-sm text-muted-foreground">
                     {metadata.operatorWallet.slice(0, 12)}...{metadata.operatorWallet.slice(-10)}
                   </span>

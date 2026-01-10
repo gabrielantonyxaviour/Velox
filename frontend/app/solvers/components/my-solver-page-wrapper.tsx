@@ -11,6 +11,7 @@ import { usePrivyAvailable } from '@/app/providers';
 import LoginPage from '@/app/components/LoginPage';
 import MySolverPageContent from './my-solver-page-content';
 import { Skeleton } from '@/app/components/ui/skeleton';
+import { normalizeAddress } from '@/app/lib/utils';
 
 export default function MySolverPageWrapper() {
   const privyAvailable = usePrivyAvailable();
@@ -40,12 +41,12 @@ function PrivySolverPage() {
       ) as any;
 
       if (moveWallet) {
-        setMovementAddress(moveWallet.address as string);
+        setMovementAddress(normalizeAddress(moveWallet.address as string));
       } else {
         setIsCreatingWallet(true);
         try {
           const wallet = await createWallet({ chainType: 'aptos' });
-          setMovementAddress((wallet as any).address);
+          setMovementAddress(normalizeAddress((wallet as any).address));
         } catch (error) {
           console.error('Error creating Movement wallet:', error);
         } finally {
@@ -59,7 +60,7 @@ function PrivySolverPage() {
 
   useEffect(() => {
     if (connected && account?.address) {
-      setMovementAddress(account.address.toString());
+      setMovementAddress(normalizeAddress(account.address.toString()));
     }
   }, [connected, account]);
 
@@ -95,7 +96,7 @@ function WalletOnlySolverPage() {
 
   useEffect(() => {
     if (connected && account?.address) {
-      setMovementAddress(account.address.toString());
+      setMovementAddress(normalizeAddress(account.address.toString()));
     }
   }, [connected, account]);
 
