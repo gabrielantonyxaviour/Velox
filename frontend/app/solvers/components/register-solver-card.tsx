@@ -49,13 +49,13 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
   const { solver, isLoading: isLoadingSolver } = useSolverInfo(walletAddress || null);
 
   const [formData, setFormData] = useState<FormData>({
-    name: '',
-    description: '',
-    operatorWallet: '',
-    website: '',
-    twitter: '',
-    discord: '',
-    stake: '1',
+    name: 'Velox Demo Solver',
+    description: 'A high-performance solver optimized for intent-based trading on Movement Network. Specializing in optimal execution and quick settlement.',
+    operatorWallet: '0xe180d922cd11329f6a980ba19804b07254ca0b989d3c3e6713cd62a51bb53c88',
+    website: 'https://velox.dev',
+    twitter: '@velox_solver',
+    discord: 'discord.gg/velox',
+    stake: '10',
   });
 
   const [imageFile, setImageFile] = useState<File | null>(null);
