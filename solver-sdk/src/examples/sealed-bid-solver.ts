@@ -1,19 +1,16 @@
 import 'dotenv/config';
 import { VeloxSolver } from '../VeloxSolver';
 import { Intent, IntentType, AuctionStatus } from '../types/intent';
+import { printVeloxLogo, printSection, printKeyValue } from '../utils/cliStyle';
 
 async function main() {
   // Beautiful startup banner
-  console.log('\n');
-  console.log('╔' + '═'.repeat(78) + '╗');
-  console.log('║' + ' '.repeat(78) + '║');
-  console.log('║' + '  🏆 VELOX SEALED BID AUCTION SOLVER'.padEnd(78) + '║');
-  console.log('║' + ' '.repeat(78) + '║');
-  console.log('╚' + '═'.repeat(78) + '╝');
+  printVeloxLogo();
+  printSection('🏆 VELOX SEALED BID AUCTION SOLVER');
   console.log('');
-  console.log('  ⏱️  Polling Interval        5,000ms (5 seconds)');
-  console.log('  🎯 Auction Type             Sealed Bid');
-  console.log('  ⏭️  Skip Existing Intents   ENABLED');
+  printKeyValue('⏱️  Polling Interval', '5,000ms (5 seconds)');
+  printKeyValue('🎯 Auction Type', 'Sealed Bid');
+  printKeyValue('⏭️  Skip Existing Intents', 'ENABLED');
   console.log('');
 
   const solver = new VeloxSolver({

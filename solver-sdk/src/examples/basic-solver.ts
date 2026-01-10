@@ -1,21 +1,18 @@
 import 'dotenv/config';
 import { VeloxSolver } from '../VeloxSolver';
 import { IntentRecord, IntentType, IntentStatus, isNextChunkReady, getRemainingChunks } from '../types/intent';
+import { printVeloxLogo, printSection, printKeyValue, printSuccess, printLoadingAnimation } from '../utils/cliStyle';
 
 async function main() {
   const shinamiNodeKey = process.env.SHINAMI_KEY;
 
   // Beautiful startup banner
-  console.log('\n');
-  console.log('╔' + '═'.repeat(78) + '╗');
-  console.log('║' + ' '.repeat(78) + '║');
-  console.log('║' + '  🚀 VELOX BASIC SOLVER'.padEnd(78) + '║');
-  console.log('║' + ' '.repeat(78) + '║');
-  console.log('╚' + '═'.repeat(78) + '╝');
+  printVeloxLogo();
+  printSection('🚀 VELOX BASIC SOLVER');
   console.log('');
-  console.log('  ⏱️  Polling Interval        10,000ms (10 seconds)');
-  console.log(`  ${shinamiNodeKey ? '✅' : '⏭️ '} Shinami Node Service      ${shinamiNodeKey ? 'CONFIGURED' : 'DISABLED'}`);
-  console.log('  ⏭️  Skip Existing Intents   ENABLED');
+  printKeyValue('⏱️  Polling Interval', '10,000ms (10 seconds)');
+  printKeyValue(`${shinamiNodeKey ? '✅' : '⏭️ '} Shinami Node Service`, shinamiNodeKey ? 'CONFIGURED' : 'DISABLED');
+  printKeyValue('⏭️  Skip Existing Intents', 'ENABLED');
   console.log('');
 
   const solver = new VeloxSolver({

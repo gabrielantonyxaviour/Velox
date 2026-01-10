@@ -5,6 +5,7 @@ import { SolverStrategy } from '../strategies/BaseStrategy';
 import { ArbitrageStrategy } from '../strategies/ArbitrageStrategy';
 import { MarketMakerStrategy } from '../strategies/MarketMakerStrategy';
 import { estimateGas, isProfitableAfterGas } from '../utils/gas';
+import { printVeloxLogo, printSection, printKeyValue } from '../utils/cliStyle';
 
 interface SolverConfig {
   rpcUrl: string;
@@ -141,20 +142,16 @@ class AdvancedSolver {
 
 async function main() {
   // Beautiful startup banner
-  console.log('\n');
-  console.log('╔' + '═'.repeat(78) + '╗');
-  console.log('║' + ' '.repeat(78) + '║');
-  console.log('║' + '  ⚡ VELOX ADVANCED SOLVER'.padEnd(78) + '║');
-  console.log('║' + ' '.repeat(78) + '║');
-  console.log('╚' + '═'.repeat(78) + '╝');
+  printVeloxLogo();
+  printSection('⚡ VELOX ADVANCED SOLVER');
 
   const minProfitBps = parseInt(process.env.MIN_PROFIT_BPS || '10');
   const maxConcurrent = parseInt(process.env.MAX_CONCURRENT || '5');
 
   console.log('');
-  console.log('  🎯 Min Profit Threshold     ' + minProfitBps.toString().padStart(25) + ' bps');
-  console.log('  🔄 Max Concurrent Intents   ' + maxConcurrent.toString().padStart(25));
-  console.log('  📊 Strategy Types           Arbitrage, Market Making');
+  printKeyValue('🎯 Min Profit Threshold', minProfitBps.toString() + ' bps');
+  printKeyValue('🔄 Max Concurrent Intents', maxConcurrent.toString());
+  printKeyValue('📊 Strategy Types', 'Arbitrage, Market Making');
   console.log('');
 
   const solver = new AdvancedSolver({
