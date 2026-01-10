@@ -20,7 +20,11 @@ async function main() {
     veloxAddress:
       process.env.VELOX_ADDRESS ||
       '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb',
+    // Private key of the operator wallet (used for signing transactions)
     privateKey: process.env.SOLVER_PRIVATE_KEY,
+    // Address where solver is registered on-chain (can be different from operator)
+    // If not provided, will use the address derived from privateKey
+    registeredSolverAddress: process.env.REGISTERED_SOLVER_ADDRESS,
     pollingInterval: 10000, // 10 seconds to avoid rate limiting
     skipExistingOnStartup: true,
     shinamiNodeKey,

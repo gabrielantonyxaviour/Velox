@@ -54,7 +54,10 @@ export interface VeloxSolverConfig {
   veloxAddress: string;
   /** Fee config address (defaults to veloxAddress) */
   feeConfigAddr?: string;
+  /** Private key of the operator wallet (used for signing transactions) */
   privateKey?: string;
+  /** Address where the solver is registered on-chain (can be different from operator wallet) */
+  registeredSolverAddress?: string;
   graphqlUrl?: string;
   pollingInterval?: number;
   /** Skip processing intents that existed before the solver started */
@@ -71,6 +74,7 @@ export class VeloxSolver extends EventEmitter {
   private isRunning: boolean = false;
   private pollingInterval: number;
   private skipExistingOnStartup: boolean;
+  private registeredSolverAddress?: string;
 
   constructor(config: VeloxSolverConfig) {
     super();
@@ -83,6 +87,7 @@ export class VeloxSolver extends EventEmitter {
     this.feeConfigAddr = config.feeConfigAddr || config.veloxAddress;
     this.pollingInterval = config.pollingInterval || 1000;
     this.skipExistingOnStartup = config.skipExistingOnStartup ?? false;
+    this.registeredSolverAddress = config.registeredSolverAddress;
 
     if (config.graphqlUrl) {
       this.graphql = new VeloxGraphQLClient({ url: config.graphqlUrl });
@@ -165,15 +170,21 @@ export class VeloxSolver extends EventEmitter {
       throw new Error('❌ Solver account not configured. Please set SOLVER_PRIVATE_KEY in .env');
     }
 
-    const solverAddress = this.client.getAccountAddress();
-    if (!solverAddress) {
-      throw new Error('❌ Could not determine solver address');
+    const operatorAddress = this.client.getAccountAddress();
+    if (!operatorAddress) {
+      throw new Error('❌ Could not determine operator address');
     }
+
+    // Use registered solver address if provided, otherwise use operator address
+    const solverAddress = this.registeredSolverAddress || operatorAddress;
 
     printVeloxLogo();
     printSection('🔐 SOLVER REGISTRATION VALIDATION');
     await printLoadingAnimation('📋 Validating solver credentials', 1000);
-    printInfo(`Solver Address: ${solverAddress}`);
+    printInfo(`Registered Solver Address: ${solverAddress}`);
+    if (this.registeredSolverAddress) {
+      printInfo(`Operator Address: ${operatorAddress}`);
+    }
 
     try {
       const stats = await this.getSolverStats(solverAddress);
