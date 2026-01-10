@@ -13,6 +13,7 @@ import { useWalletContextNative } from '../../hooks/use-wallet-context-native';
 import { WalletContextContext } from '../../hooks/use-wallet-context';
 import { cancelIntentNative } from '../../lib/velox/transactions';
 import { showTxSuccess, showError } from '../../lib/toast';
+import { normalizeAddress } from '../../lib/utils';
 
 export default function WalletOnlyHome() {
   const { account, connected } = useWallet();
@@ -56,7 +57,7 @@ export default function WalletOnlyHome() {
 
   useEffect(() => {
     if (connected && account?.address) {
-      setMovementAddress(account.address.toString());
+      setMovementAddress(normalizeAddress(account.address.toString()));
     }
   }, [connected, account]);
 

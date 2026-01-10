@@ -16,6 +16,7 @@ import { WalletContextContext } from '../../hooks/use-wallet-context';
 import { cancelIntent, cancelIntentNative } from '../../lib/velox/transactions';
 import { showTxSuccess, showError } from '../../lib/toast';
 import { Skeleton } from '../ui/skeleton';
+import { normalizeAddress } from '../../lib/utils';
 
 export default function PrivyHome() {
   const { ready, authenticated, user } = usePrivy();
@@ -81,12 +82,12 @@ export default function PrivyHome() {
       ) as any;
 
       if (moveWallet) {
-        setMovementAddress(moveWallet.address as string);
+        setMovementAddress(normalizeAddress(moveWallet.address as string));
       } else {
         setIsCreatingWallet(true);
         try {
           const wallet = await createWallet({ chainType: 'aptos' });
-          setMovementAddress((wallet as any).address);
+          setMovementAddress(normalizeAddress((wallet as any).address));
         } catch (error) {
           console.error('Error creating Movement wallet:', error);
         } finally {
