@@ -21,8 +21,9 @@ async function main() {
     console.error('Solver error:', error.message);
   });
 
-  // Listen for new intents - check all SWAP intents for Dutch auctions
-  solver.startIntentStream(async (intent: Intent) => {
+  // Listen for new intents - validates registration before starting
+  // Check all SWAP intents for Dutch auctions
+  await solver.startIntentStream(async (intent: Intent) => {
     // Only handle SWAP intents that might have Dutch auctions
     if (intent.type !== IntentType.SWAP) {
       console.log(`Skipping intent ${intent.id} - not a SWAP type`);

@@ -128,13 +128,92 @@ export class VeloxSolver extends EventEmitter {
     }
   }
 
-  startIntentStream(callback: (record: IntentRecord) => void): void {
+  async startIntentStream(callback: (record: IntentRecord) => void): Promise<void> {
+    // Validate solver registration before starting
+    await this.validateSolverRegistration();
+
     this.isRunning = true;
     this.pollIntents(callback);
   }
 
   stopIntentStream(): void {
     this.isRunning = false;
+  }
+
+  // ============ Solver Registration Validation ============
+
+  /**
+   * Validate that solver is registered with stake before starting
+   * Fetches and displays solver metadata
+   */
+  async validateSolverRegistration(): Promise<void> {
+    if (!this.client.hasAccount()) {
+      throw new Error('❌ Solver account not configured. Please set SOLVER_PRIVATE_KEY in .env');
+    }
+
+    const solverAddress = this.client.getAccountAddress();
+    if (!solverAddress) {
+      throw new Error('❌ Could not determine solver address');
+    }
+
+    console.log('\n' + '='.repeat(70));
+    console.log('🔐 SOLVER REGISTRATION VALIDATION');
+    console.log('='.repeat(70));
+    console.log(`Checking registration for: ${solverAddress}\n`);
+
+    try {
+      const stats = await this.getSolverStats(solverAddress);
+
+      if (!stats.isRegistered) {
+        console.error('❌ Solver is NOT registered!');
+        console.error('\nTo register, you must:');
+        console.error('1. Call solver_registry::register_solver');
+        console.error('2. Call solver_registry::add_stake with at least minimum stake amount');
+        console.error('\nExample:');
+        console.error('  movement move run --function-id <VELOX>::solver_registry::register_solver');
+        console.error('  movement move run --function-id <VELOX>::solver_registry::add_stake --args <AMOUNT>');
+        throw new Error('Solver not registered');
+      }
+
+      if (stats.stake === 0n) {
+        console.error('❌ Solver has NO STAKE!');
+        console.error('\nPlease add stake before running solver:');
+        console.error('  movement move run --function-id <VELOX>::solver_registry::add_stake --args <AMOUNT>');
+        throw new Error('Solver has no stake');
+      }
+
+      // Display solver profile metadata
+      console.log('✅ SOLVER PROFILE METADATA');
+      console.log('-'.repeat(70));
+      console.log(`Address:              ${stats.address}`);
+      console.log(`Registered:           ${stats.isRegistered ? '✓ Yes' : '✗ No'}`);
+      console.log(`Status:               ${stats.isActive ? '🟢 ACTIVE' : '🔴 INACTIVE'}`);
+      console.log('-'.repeat(70));
+      console.log(`Stake (Octas):        ${stats.stake.toString()}`);
+      console.log(`Pending Unstake:      ${stats.pendingUnstake.toString()}`);
+      if (stats.unstakeAvailableAt > 0) {
+        const unstakeDate = new Date(stats.unstakeAvailableAt * 1000).toISOString();
+        console.log(`Unstake Available:    ${unstakeDate}`);
+      }
+      console.log('-'.repeat(70));
+      console.log(`Reputation Score:     ${stats.reputationScore}`);
+      console.log(`Successful Fills:     ${stats.successfulFills}`);
+      console.log(`Failed Fills:         ${stats.failedFills}`);
+      console.log(`Total Volume:         ${stats.totalVolume.toString()} (Octas)`);
+      console.log('-'.repeat(70));
+
+      const registeredDate = new Date(stats.registeredAt * 1000).toISOString();
+      const lastActiveDate = stats.lastActive > 0 ? new Date(stats.lastActive * 1000).toISOString() : 'Never';
+      console.log(`Registered At:        ${registeredDate}`);
+      console.log(`Last Active:          ${lastActiveDate}`);
+      console.log('='.repeat(70));
+      console.log('✅ Solver validation passed. Starting intent stream...\n');
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('not registered') || error.message.includes('no stake'))) {
+        throw error;
+      }
+      throw new Error(`Failed to validate solver registration: ${(error as Error).message}`);
+    }
   }
 
   // ============ Fill Functions (NEW) ============
