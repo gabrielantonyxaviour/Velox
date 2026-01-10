@@ -3,6 +3,19 @@ import { VeloxSolver } from '../VeloxSolver';
 import { Intent, IntentType, AuctionStatus } from '../types/intent';
 
 async function main() {
+  // Beautiful startup banner
+  console.log('\n');
+  console.log('╔' + '═'.repeat(78) + '╗');
+  console.log('║' + ' '.repeat(78) + '║');
+  console.log('║' + '  🏆 VELOX SEALED BID AUCTION SOLVER'.padEnd(78) + '║');
+  console.log('║' + ' '.repeat(78) + '║');
+  console.log('╚' + '═'.repeat(78) + '╝');
+  console.log('');
+  console.log('  ⏱️  Polling Interval        5,000ms (5 seconds)');
+  console.log('  🎯 Auction Type             Sealed Bid');
+  console.log('  ⏭️  Skip Existing Intents   ENABLED');
+  console.log('');
+
   const solver = new VeloxSolver({
     rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
     veloxAddress:
@@ -13,12 +26,9 @@ async function main() {
     skipExistingOnStartup: true,
   });
 
-  console.log('Starting Velox Sealed Bid Auction Solver...');
-  console.log('Listening for sealed bid auctions...\n');
-
   // Handle errors
   solver.on('error', (error) => {
-    console.error('Solver error:', error.message);
+    console.error('\n  ❌ Solver error:', error.message);
   });
 
   // Listen for new intents - validates registration before starting
@@ -53,12 +63,19 @@ async function main() {
 
   // Handle graceful shutdown
   process.on('SIGINT', () => {
-    console.log('\nShutting down sealed bid solver...');
+    console.log('\n');
+    console.log('╔' + '═'.repeat(78) + '╗');
+    console.log('║' + '  ⏹️  Shutting down sealed bid solver...'.padEnd(78) + '║');
+    console.log('╚' + '═'.repeat(78) + '╝');
     solver.stopIntentStream();
     process.exit(0);
   });
 
   process.on('SIGTERM', () => {
+    console.log('\n');
+    console.log('╔' + '═'.repeat(78) + '╗');
+    console.log('║' + '  ⏹️  Terminating sealed bid solver...'.padEnd(78) + '║');
+    console.log('╚' + '═'.repeat(78) + '╝');
     solver.stopIntentStream();
     process.exit(0);
   });

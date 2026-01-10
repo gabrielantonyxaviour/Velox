@@ -140,20 +140,40 @@ class AdvancedSolver {
 }
 
 async function main() {
+  // Beautiful startup banner
+  console.log('\n');
+  console.log('╔' + '═'.repeat(78) + '╗');
+  console.log('║' + ' '.repeat(78) + '║');
+  console.log('║' + '  ⚡ VELOX ADVANCED SOLVER'.padEnd(78) + '║');
+  console.log('║' + ' '.repeat(78) + '║');
+  console.log('╚' + '═'.repeat(78) + '╝');
+
+  const minProfitBps = parseInt(process.env.MIN_PROFIT_BPS || '10');
+  const maxConcurrent = parseInt(process.env.MAX_CONCURRENT || '5');
+
+  console.log('');
+  console.log('  🎯 Min Profit Threshold     ' + minProfitBps.toString().padStart(25) + ' bps');
+  console.log('  🔄 Max Concurrent Intents   ' + maxConcurrent.toString().padStart(25));
+  console.log('  📊 Strategy Types           Arbitrage, Market Making');
+  console.log('');
+
   const solver = new AdvancedSolver({
     rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
     veloxAddress:
       process.env.VELOX_ADDRESS ||
       '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb',
     privateKey: process.env.SOLVER_PRIVATE_KEY || '',
-    minProfitBps: parseInt(process.env.MIN_PROFIT_BPS || '10'),
-    maxConcurrentIntents: parseInt(process.env.MAX_CONCURRENT || '5'),
+    minProfitBps,
+    maxConcurrentIntents: maxConcurrent,
   });
 
   await solver.start();
 
   process.on('SIGINT', () => {
-    console.log('\nShutting down...');
+    console.log('\n');
+    console.log('╔' + '═'.repeat(78) + '╗');
+    console.log('║' + '  ⏹️  Shutting down advanced solver...'.padEnd(78) + '║');
+    console.log('╚' + '═'.repeat(78) + '╝');
     solver.stop();
     process.exit(0);
   });

@@ -5,6 +5,19 @@ import { IntentRecord, IntentType, IntentStatus, isNextChunkReady, getRemainingC
 async function main() {
   const shinamiNodeKey = process.env.SHINAMI_KEY;
 
+  // Beautiful startup banner
+  console.log('\n');
+  console.log('╔' + '═'.repeat(78) + '╗');
+  console.log('║' + ' '.repeat(78) + '║');
+  console.log('║' + '  🚀 VELOX BASIC SOLVER'.padEnd(78) + '║');
+  console.log('║' + ' '.repeat(78) + '║');
+  console.log('╚' + '═'.repeat(78) + '╝');
+  console.log('');
+  console.log('  ⏱️  Polling Interval        10,000ms (10 seconds)');
+  console.log(`  ${shinamiNodeKey ? '✅' : '⏭️ '} Shinami Node Service      ${shinamiNodeKey ? 'CONFIGURED' : 'DISABLED'}`);
+  console.log('  ⏭️  Skip Existing Intents   ENABLED');
+  console.log('');
+
   const solver = new VeloxSolver({
     rpcUrl: process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1',
     veloxAddress:
@@ -16,15 +29,9 @@ async function main() {
     shinamiNodeKey,
   });
 
-  console.log('Starting Velox Basic Solver...');
-  if (shinamiNodeKey) {
-    console.log('Shinami: CONFIGURED');
-  }
-  console.log('Listening for pending intents...\n');
-
   // Handle errors
   solver.on('error', (error) => {
-    console.error('Solver error:', error.message);
+    console.error('\n  ❌ Solver error:', error.message);
   });
 
   // Listen for new intents - validates registration before starting
@@ -60,12 +67,19 @@ async function main() {
 
   // Handle graceful shutdown
   process.on('SIGINT', () => {
-    console.log('\nShutting down solver...');
+    console.log('\n');
+    console.log('╔' + '═'.repeat(78) + '╗');
+    console.log('║' + '  ⏹️  Shutting down Velox solver...'.padEnd(78) + '║');
+    console.log('╚' + '═'.repeat(78) + '╝');
     solver.stopIntentStream();
     process.exit(0);
   });
 
   process.on('SIGTERM', () => {
+    console.log('\n');
+    console.log('╔' + '═'.repeat(78) + '╗');
+    console.log('║' + '  ⏹️  Terminating Velox solver...'.padEnd(78) + '║');
+    console.log('╚' + '═'.repeat(78) + '╝');
     solver.stopIntentStream();
     process.exit(0);
   });

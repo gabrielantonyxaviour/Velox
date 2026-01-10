@@ -156,61 +156,130 @@ export class VeloxSolver extends EventEmitter {
       throw new Error('❌ Could not determine solver address');
     }
 
-    console.log('\n' + '='.repeat(70));
-    console.log('🔐 SOLVER REGISTRATION VALIDATION');
-    console.log('='.repeat(70));
-    console.log(`Checking registration for: ${solverAddress}\n`);
+    console.log('\n');
+    console.log('╔' + '═'.repeat(78) + '╗');
+    console.log('║' + ' '.repeat(78) + '║');
+    console.log('║' + '  🔐 VELOX SOLVER REGISTRATION CHECK'.padEnd(78) + '║');
+    console.log('║' + ' '.repeat(78) + '║');
+    console.log('╚' + '═'.repeat(78) + '╝');
+    console.log(`\n  📋 Validating solver: ${solverAddress}\n`);
 
     try {
       const stats = await this.getSolverStats(solverAddress);
 
       if (!stats.isRegistered) {
-        console.error('❌ Solver is NOT registered!');
-        console.error('\nTo register with stake in one transaction, call:');
-        console.error('  movement move run --function-id <VELOX>::solver_registry::register_and_stake \\');
-        console.error('    --args string:"<metadata_uri>" u64:<stake_amount>');
-        console.error('\nWhere:');
-        console.error('  <metadata_uri>  = URL or IPFS hash describing your solver');
-        console.error('  <stake_amount>  = Minimum 100000000 Octas (1 MOVE)');
-        console.error('\nExample:');
-        console.error('  movement move run --function-id <VELOX>::solver_registry::register_and_stake \\');
-        console.error('    --args string:"https://example.com/solver-profile" u64:1000000000');
+        console.log('');
+        console.log('╔' + '═'.repeat(78) + '╗');
+        console.log('║' + ' '.repeat(78) + '║');
+        console.log('║' + '  ❌ REGISTRATION REQUIRED'.padEnd(78) + '║');
+        console.log('║' + ' '.repeat(78) + '║');
+        console.log('╚' + '═'.repeat(78) + '╝');
+        console.log('');
+        console.log('  Your solver has NOT been registered with the Velox network.');
+        console.log('');
+        console.log('  📌 To register your solver, run this command:');
+        console.log('');
+        console.log('     movement move run \\');
+        console.log('       --function-id <VELOX>::solver_registry::register_and_stake \\');
+        console.log('       --args \\');
+        console.log('         string:"<metadata_uri>" \\');
+        console.log('         u64:<stake_amount>');
+        console.log('');
+        console.log('  📝 Parameters:');
+        console.log('     • <metadata_uri>  = URL or IPFS hash describing your solver');
+        console.log('     • <stake_amount>  = Minimum 100000000 Octas (1 MOVE)');
+        console.log('');
+        console.log('  💡 Example:');
+        console.log('');
+        console.log('     movement move run \\');
+        console.log('       --function-id 0x123...::solver_registry::register_and_stake \\');
+        console.log('       --args \\');
+        console.log('         string:"https://example.com/solver-profile" \\');
+        console.log('         u64:1000000000');
+        console.log('');
         throw new Error('Solver not registered');
       }
 
       if (stats.stake === 0n) {
-        console.error('❌ Solver has NO STAKE!');
-        console.error('\nPlease add stake before running solver:');
-        console.error('  movement move run --function-id <VELOX>::solver_registry::add_stake --args <AMOUNT>');
+        console.log('');
+        console.log('╔' + '═'.repeat(78) + '╗');
+        console.log('║' + ' '.repeat(78) + '║');
+        console.log('║' + '  ⚠️  NO STAKE FOUND'.padEnd(78) + '║');
+        console.log('║' + ' '.repeat(78) + '║');
+        console.log('╚' + '═'.repeat(78) + '╝');
+        console.log('');
+        console.log('  Your solver is registered but has no active stake.');
+        console.log('');
+        console.log('  📌 To add stake to your solver, run:');
+        console.log('');
+        console.log('     movement move run \\');
+        console.log('       --function-id <VELOX>::solver_registry::add_stake \\');
+        console.log('       --args \\');
+        console.log('         address:<registry_address> \\');
+        console.log('         u64:<stake_amount>');
+        console.log('');
+        console.log('  💡 Example (add 1 MOVE):');
+        console.log('');
+        console.log('     movement move run \\');
+        console.log('       --function-id 0x123...::solver_registry::add_stake \\');
+        console.log('       --args \\');
+        console.log('         address:0x123... \\');
+        console.log('         u64:1000000000');
+        console.log('');
         throw new Error('Solver has no stake');
       }
 
-      // Display solver profile metadata
-      console.log('✅ SOLVER PROFILE METADATA');
-      console.log('-'.repeat(70));
-      console.log(`Address:              ${stats.address}`);
-      console.log(`Registered:           ${stats.isRegistered ? '✓ Yes' : '✗ No'}`);
-      console.log(`Status:               ${stats.isActive ? '🟢 ACTIVE' : '🔴 INACTIVE'}`);
-      console.log('-'.repeat(70));
-      console.log(`Stake (Octas):        ${stats.stake.toString()}`);
-      console.log(`Pending Unstake:      ${stats.pendingUnstake.toString()}`);
+      // Display solver profile metadata - PRETTY FORMAT
+      console.log('\n');
+      console.log('╔' + '═'.repeat(78) + '╗');
+      console.log('║' + ' '.repeat(78) + '║');
+      console.log('║' + '  ✅ SOLVER VALIDATION PASSED'.padEnd(78) + '║');
+      console.log('║' + ' '.repeat(78) + '║');
+      console.log('╚' + '═'.repeat(78) + '╝');
+      console.log('');
+
+      // Profile section
+      console.log('  📊 SOLVER PROFILE');
+      console.log('  ' + '─'.repeat(76));
+      console.log(`    Address              ${stats.address}`);
+      console.log(`    Status               ${stats.isActive ? '🟢 ACTIVE' : '🔴 INACTIVE'}`);
+      console.log(`    Registered           ${stats.isRegistered ? '✓ Yes' : '✗ No'}`);
+
+      // Stake section
+      console.log('');
+      console.log('  💰 STAKE INFORMATION');
+      console.log('  ' + '─'.repeat(76));
+      console.log(`    Stake (Octas)        ${stats.stake.toString().padStart(25)}`);
+      console.log(`    Pending Unstake      ${stats.pendingUnstake.toString().padStart(25)}`);
       if (stats.unstakeAvailableAt > 0) {
         const unstakeDate = new Date(stats.unstakeAvailableAt * 1000).toISOString();
-        console.log(`Unstake Available:    ${unstakeDate}`);
+        console.log(`    Unstake Available    ${unstakeDate.padStart(25)}`);
       }
-      console.log('-'.repeat(70));
-      console.log(`Reputation Score:     ${stats.reputationScore}`);
-      console.log(`Successful Fills:     ${stats.successfulFills}`);
-      console.log(`Failed Fills:         ${stats.failedFills}`);
-      console.log(`Total Volume:         ${stats.totalVolume.toString()} (Octas)`);
-      console.log('-'.repeat(70));
 
+      // Performance section
+      console.log('');
+      console.log('  🎯 PERFORMANCE METRICS');
+      console.log('  ' + '─'.repeat(76));
+      console.log(`    Reputation Score     ${stats.reputationScore.toString().padStart(25)}`);
+      console.log(`    Successful Fills     ${stats.successfulFills.toString().padStart(25)}`);
+      console.log(`    Failed Fills         ${stats.failedFills.toString().padStart(25)}`);
+      console.log(`    Total Volume (Octas) ${stats.totalVolume.toString().padStart(25)}`);
+
+      // Activity section
+      console.log('');
+      console.log('  📅 ACTIVITY LOG');
+      console.log('  ' + '─'.repeat(76));
       const registeredDate = new Date(stats.registeredAt * 1000).toISOString();
       const lastActiveDate = stats.lastActive > 0 ? new Date(stats.lastActive * 1000).toISOString() : 'Never';
-      console.log(`Registered At:        ${registeredDate}`);
-      console.log(`Last Active:          ${lastActiveDate}`);
-      console.log('='.repeat(70));
-      console.log('✅ Solver validation passed. Starting intent stream...\n');
+      console.log(`    Registered At        ${registeredDate.padStart(25)}`);
+      console.log(`    Last Active          ${lastActiveDate.padStart(25)}`);
+      console.log('  ' + '─'.repeat(76));
+
+      console.log('');
+      console.log('╔' + '═'.repeat(78) + '╗');
+      console.log('║' + '  🚀 Initializing intent stream...'.padEnd(78) + '║');
+      console.log('╚' + '═'.repeat(78) + '╝');
+      console.log('');
     } catch (error) {
       if (error instanceof Error && (error.message.includes('not registered') || error.message.includes('no stake'))) {
         throw error;
