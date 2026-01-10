@@ -1,10 +1,13 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Header } from '@/app/components/layout/header';
 import { Footer } from '@/app/components/layout/footer';
 import { useWalletContext } from '@/app/hooks/use-wallet-context';
 import { useSolverInfo } from '@/app/hooks/use-solvers';
+import { getSolverMetadata, getAllSolverMetadata } from '@/app/lib/solver-metadata';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Progress } from '@/app/components/ui/progress';
@@ -78,6 +81,24 @@ export default function SolverDetailPage() {
   const { walletAddress } = useWalletContext();
   const address = params.address as string;
   const { solver, isLoading, error, refetch } = useSolverInfo(address);
+  const [metadata, setMetadata] = useState<any>(null);
+
+  useEffect(() => {
+    // Fetch metadata with fallback
+    let solverMetadata = getSolverMetadata(address);
+
+    // If not found by address, check all stored metadata and use the most recent one
+    if (!solverMetadata) {
+      const allMetadata = getAllSolverMetadata();
+      const metadataArray = Object.values(allMetadata);
+      if (metadataArray.length > 0) {
+        // Use the most recently created metadata
+        solverMetadata = metadataArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+      }
+    }
+
+    setMetadata(solverMetadata);
+  }, [address]);
 
   const copyAddress = () => {
     navigator.clipboard.writeText(address);
@@ -108,34 +129,98 @@ export default function SolverDetailPage() {
       <Header address={walletAddress || ''} />
 
       <main className="flex-1 container mx-auto px-4 py-6">
-        {/* Back Button & Title */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/solvers')}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold">Solver Dashboard</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="font-mono text-sm text-muted-foreground">
-                {address.slice(0, 12)}...{address.slice(-10)}
-              </span>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyAddress}>
-                <Copy className="w-3 h-3" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openExplorer}>
-                <ExternalLink className="w-3 h-3" />
+        {/* Back Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => router.push('/solvers')}
+          className="mb-6"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+
+        {/* Solver Profile Header */}
+        {metadata && (
+          <Card className="p-8 mb-6">
+            <div className="flex gap-6 items-start">
+              {/* Profile Image */}
+              <div className="flex-shrink-0">
+                {metadata.imageUrl ? (
+                  <Image
+                    src={metadata.imageUrl}
+                    alt={metadata.name}
+                    width={120}
+                    height={120}
+                    className="rounded-lg object-cover w-32 h-32"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-lg bg-primary/20 flex items-center justify-center text-4xl font-bold">
+                    {metadata.name?.charAt(0).toUpperCase() || '?'}
+                  </div>
+                )}
+              </div>
+
+              {/* Profile Info */}
+              <div className="flex-1">
+                <h1 className="text-4xl font-bold">{metadata.name}</h1>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="font-mono text-sm text-muted-foreground">
+                    {address.slice(0, 12)}...{address.slice(-10)}
+                  </span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyAddress}>
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openExplorer}>
+                    <ExternalLink className="w-3 h-3" />
+                  </Button>
+                </div>
+
+                {metadata.description && (
+                  <p className="text-muted-foreground mt-4 max-w-2xl">
+                    {metadata.description}
+                  </p>
+                )}
+
+                {/* Social Links */}
+                {(metadata.website || metadata.twitter || metadata.discord) && (
+                  <div className="flex gap-3 mt-4">
+                    {metadata.website && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={metadata.website} target="_blank" rel="noopener noreferrer">
+                          Website
+                        </a>
+                      </Button>
+                    )}
+                    {metadata.twitter && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a
+                          href={`https://twitter.com/${metadata.twitter.replace('@', '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Twitter
+                        </a>
+                      </Button>
+                    )}
+                    {metadata.discord && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={`https://discord.gg/${metadata.discord}`} target="_blank" rel="noopener noreferrer">
+                          Discord
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Refresh Button */}
+              <Button variant="outline" size="sm" onClick={refetch}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
               </Button>
             </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={refetch}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
+          </Card>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
