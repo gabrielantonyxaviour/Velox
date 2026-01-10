@@ -6,8 +6,8 @@ const RPC_URL = process.env.RPC_URL || 'https://testnet.movementnetwork.xyz/v1';
 const SOLVER_ADDRESS = process.env.SOLVER_ADDRESS || '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
 
 const TOKEN_ADDRESSES = {
-  tUSDC: '0x194eede164d0a9ee0c8082ff82eebdf146b3936872c203cf9282cd54ea5287ce',
-  tMOVE: '0x626598b71b290f416b9e906dc3dfff337bf0364b3bf53b0bbb6ffab1c0dc373b',
+  tUSDC: '0xd249fd3776a6bf959963d2f7712386da3f343a973f0d88ed05b1e9e6be6cb015',
+  tMOVE: '0x9913b3a2cd19b572521bcc890058dfd285943fbfa33b7c954879f55bbe5da89',
   MOVE: '0x1::aptos_coin::AptosCoin',
 };
 

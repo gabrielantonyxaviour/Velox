@@ -113,6 +113,8 @@ export interface IntentRecord {
   fills: Fill[];
   chunksExecuted: number;
   nextExecution: number;
+  // Added by frontend when submitting intent
+  submitTxHash?: string;
 }
 
 // ============================================================

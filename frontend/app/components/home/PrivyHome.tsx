@@ -17,6 +17,7 @@ import { cancelIntent, cancelIntentNative } from '../../lib/velox/transactions';
 import { showTxSuccess, showError } from '../../lib/toast';
 import { Skeleton } from '../ui/skeleton';
 import { normalizeAddress } from '../../lib/utils';
+import { storePendingTxHash } from '../../lib/velox/intent-tx-store';
 
 export default function PrivyHome() {
   const { ready, authenticated, user } = usePrivy();
@@ -31,9 +32,13 @@ export default function PrivyHome() {
 
   const handleIntentSuccess = useCallback((txHash: string) => {
     showTxSuccess('Intent submitted successfully!', txHash);
+    // Store the tx hash so it can be associated with the new intent
+    if (movementAddress) {
+      storePendingTxHash(movementAddress, txHash);
+    }
     // Refetch with a slight delay to allow chain to finalize
     setTimeout(() => refetch(), 1000);
-  }, [refetch]);
+  }, [refetch, movementAddress]);
 
   const handleIntentError = useCallback((error: string) => {
     showError('Transaction failed', error);

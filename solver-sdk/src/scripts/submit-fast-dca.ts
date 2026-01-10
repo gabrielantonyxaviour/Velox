@@ -6,8 +6,8 @@ const RPC_URL = 'https://testnet.movementnetwork.xyz/v1';
 const USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY;
 
 const TOKEN_ADDRESSES = {
-  tUSDC: '0x194eede164d0a9ee0c8082ff82eebdf146b3936872c203cf9282cd54ea5287ce',
-  tMOVE: '0x626598b71b290f416b9e906dc3dfff337bf0364b3bf53b0bbb6ffab1c0dc373b',
+  tUSDC: '0xd249fd3776a6bf959963d2f7712386da3f343a973f0d88ed05b1e9e6be6cb015',
+  tMOVE: '0x9913b3a2cd19b572521bcc890058dfd285943fbfa33b7c954879f55bbe5da89',
 };
 
 async function main() {

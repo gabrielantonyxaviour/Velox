@@ -1,17 +1,17 @@
 // Velox contract addresses on Movement Bardock Testnet
-export const VELOX_ADDRESS = '0x951cb360d9b1d4cb4834cf76e4fca0f63a85237874d8b2d45b3056439b91cbb7';
+export const VELOX_ADDRESS = '0x44acd76127a76012da5efb314c9a47882017c12b924181379ff3b9d17b3cc8fb';
 export const REGISTRY_ADDR = VELOX_ADDRESS; // Registry is at same address
 
 // Token metadata addresses (fungible assets)
 export const TOKENS = {
   tUSDC: {
-    address: '0x194eede164d0a9ee0c8082ff82eebdf146b3936872c203cf9282cd54ea5287ce',
+    address: '0xd249fd3776a6bf959963d2f7712386da3f343a973f0d88ed05b1e9e6be6cb015',
     symbol: 'tUSDC',
     name: 'Test USDC',
     decimals: 8,
   },
   tMOVE: {
-    address: '0x626598b71b290f416b9e906dc3dfff337bf0364b3bf53b0bbb6ffab1c0dc373b',
+    address: '0x9913b3a2cd19b572521bcc890058dfd285943fbfa33b7c954879f55bbe5da89',
     symbol: 'tMOVE',
     name: 'Test MOVE',
     decimals: 8,
