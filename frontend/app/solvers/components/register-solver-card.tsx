@@ -199,7 +199,9 @@ export function RegisterSolverCard({ onSuccess }: RegisterSolverCardProps) {
       }
 
       // Step 4: Store metadata locally
+      // Store under wallet address (primary key)
       storeSolverMetadata(walletAddress, metadata);
+      console.log('[Register] Stored metadata under wallet:', walletAddress);
 
       // Step 5: Show success notification with transaction link
       showTxSuccess('Solver registered successfully!', txHash);
