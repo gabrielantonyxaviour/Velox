@@ -397,36 +397,76 @@ function parseEventsFromTransactions(transactions: Transaction[], intentIds: big
 
 /**
  * Fetch IntentCreated and IntentFilled events for given intent IDs
+ * Uses the Aptos SDK to query module events directly
  */
 export async function fetchIntentEvents(intentIds: bigint[], userAddress?: string): Promise<void> {
   if (intentIds.length === 0) return;
 
   try {
-    const fetchPromises: Promise<Transaction[]>[] = [];
+    // Fetch IntentCreated events
+    const createdEvents = await aptos.getModuleEventsByEventType({
+      eventType: `${VELOX_ADDRESS}::submission::IntentCreated`,
+      minimumLedgerVersion: 0,
+    }).catch(() => []);
 
-    if (userAddress) {
-      fetchPromises.push(
-        fetch(`${RPC_URL}/accounts/${userAddress}/transactions?limit=50`)
-          .then(res => res.ok ? res.json() : [])
-          .catch(() => [])
-      );
+    // Fetch IntentFilled events
+    const filledEvents = await aptos.getModuleEventsByEventType({
+      eventType: `${VELOX_ADDRESS}::settlement::IntentFilled`,
+      minimumLedgerVersion: 0,
+    }).catch(() => []);
+
+    // Process IntentCreated events
+    for (const event of createdEvents) {
+      const data = event.data as Record<string, unknown>;
+      const intentId = String(data.intent_id);
+
+      if (intentIds.some(id => id.toString() === intentId)) {
+        const existing = eventCache.get(intentId) || { fillTxHashes: [] };
+        existing.submissionTxHash = event.transaction_version?.toString() || '';
+        eventCache.set(intentId, existing);
+      }
     }
 
-    fetchPromises.push(
-      fetch(`${RPC_URL}/accounts/${VELOX_ADDRESS}/transactions?limit=100`)
-        .then(res => res.ok ? res.json() : [])
-        .catch(() => [])
-    );
+    // Process IntentFilled events
+    for (const event of filledEvents) {
+      const data = event.data as Record<string, unknown>;
+      const intentId = String(data.intent_id);
 
-    const results = await Promise.all(fetchPromises);
+      if (intentIds.some(id => id.toString() === intentId)) {
+        const existing = eventCache.get(intentId) || { fillTxHashes: [] };
+        const txVersion = event.transaction_version?.toString() || '';
+        const fillNumber = Number(data.fill_number || 1);
 
-    for (const transactions of results) {
-      if (Array.isArray(transactions)) {
-        parseEventsFromTransactions(transactions, intentIds);
+        // Avoid duplicate entries
+        if (txVersion && !existing.fillTxHashes.some(f => f.txHash === txVersion)) {
+          existing.fillTxHashes.push({
+            txHash: txVersion,
+            fillNumber,
+            solver: String(data.solver || ''),
+            inputAmount: BigInt(String(data.input_amount || '0')),
+            outputAmount: BigInt(String(data.output_amount || '0')),
+          });
+        }
+        eventCache.set(intentId, existing);
       }
     }
   } catch (error) {
-    console.warn('[Velox] Event fetching not available:', error);
+    console.warn('[Velox] Event fetching failed, trying fallback:', error);
+
+    // Fallback: try fetching from user transactions
+    try {
+      if (userAddress) {
+        const userTxs = await fetch(`${RPC_URL}/accounts/${userAddress}/transactions?limit=50`)
+          .then(res => res.ok ? res.json() : [])
+          .catch(() => []);
+
+        if (Array.isArray(userTxs)) {
+          parseEventsFromTransactions(userTxs, intentIds);
+        }
+      }
+    } catch {
+      // Silent fail for fallback
+    }
   }
 }
 
